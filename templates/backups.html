@@ -1,1 +1,7 @@
-{% extends 'base.html' %}{% block title %}Backups{% endblock %}{% block content %}<section class="card table">{% for b in backups %}<div class="row"><span>{{b.timestamp}}</span><span>{{b.operation}}</span><span class="ok">{{b.result}}</span><button disabled title="Restore is available through production host-agent">Restore</button></div>{% endfor %}</section><p class="muted">The mock adapter retains the latest 10 operation metadata records. Production restores validate, atomically apply, health-check, then roll back failures.</p>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Backups{% endblock %}
+{% block content %}
+{% if backups.error %}<section class="card"><strong class="bad">{{ backups.error }}</strong></section>{% endif %}
+<section class="card table">{% for b in backups.records %}<div class="row"><span>{{ b.timestamp }}</span><span>{{ b.operation }}</span><span class="{{ 'ok' if b.result == 'SUCCESS' else 'bad' }}">{{ b.result }}</span>{% if can_restore %}<form method="post" action="/backups/{{ b.id|urlencode }}/restore?csrf={{ csrf }}"><button>Restore</button></form>{% endif %}</div>{% else %}<p class="muted">No backups yet.</p>{% endfor %}</section>
+<p class="muted">Backups are managed by the host-agent; configuration changes are validated before apply.</p>
+{% endblock %}

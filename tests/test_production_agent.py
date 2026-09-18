@@ -54,9 +54,9 @@ def test_list_response_has_no_uuid():
     assert "11111111" not in json.dumps(payload)
 
 class CoreHealthSystem(FakeSystem):
-    def listeners(self): return CommandResult(0, "LISTEN 127.0.0.1:2080\nLISTEN 127.0.0.1:2081\nLISTEN 192.168.50.10:2080\nLISTEN 172.21.0.1:2088\n")
+    def listeners(self): return CommandResult(0, "LISTEN 127.0.0.1:2080\nLISTEN 127.0.0.1:2081\nLISTEN 192.168.10.20:2443\nLISTEN 172.21.0.1:2088\n")
     def singbox_healthy(self):
-        return self.service_active("sing-box.service") and all(endpoint in self.listeners().stdout for endpoint in ("127.0.0.1:2080","127.0.0.1:2081","192.168.50.10:2080","172.21.0.1:2088"))
+        return self.service_active("sing-box.service") and all(endpoint in self.listeners().stdout for endpoint in ("127.0.0.1:2080","127.0.0.1:2081","192.168.10.20:2443","172.21.0.1:2088"))
 
 def test_core_health_does_not_require_vpn_socks_listener(tmp_path):
     target=tmp_path/"config.json"; target.write_text('{"old":true}\n')

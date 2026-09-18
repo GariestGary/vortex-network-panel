@@ -6,13 +6,7 @@ import json
 import os
 
 
-PLACEHOLDER_VALUES = {
-    "lan_host": "192.168.50.10",
-    "lan_port": 2080,
-    "lan_ssid": "ExampleWiFi",
-    "remote_domain": "gateway.example.com",
-}
-REQUIRED_PRODUCTION_FIELDS = tuple(PLACEHOLDER_VALUES)
+REQUIRED_PRODUCTION_FIELDS = ("lan_host", "lan_port", "lan_ssid", "remote_domain", "remote_port")
 
 
 @dataclass(frozen=True)
@@ -39,7 +33,13 @@ class AgentConfig:
 
 
 def config_has_placeholders(raw: dict[str, object]) -> bool:
-    return any(raw.get(key) == value for key, value in PLACEHOLDER_VALUES.items())
+    ssid = raw.get("lan_ssid")
+    domain = raw.get("remote_domain")
+    return (
+        isinstance(ssid, str) and ssid.casefold().startswith("example")
+    ) or (
+        isinstance(domain, str) and domain.casefold().endswith(".example.com")
+    )
 
 
 def validate_production_config(raw: dict[str, object]) -> None:

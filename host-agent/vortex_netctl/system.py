@@ -19,9 +19,7 @@ class System:
         return self.run(("/usr/bin/systemctl","is-active","--quiet",unit),10).code == 0
     def listeners(self) -> CommandResult: return self.run(("/usr/bin/ss","-lntH"),10)
     def singbox_healthy(self) -> bool:
-        if not self.service_active("sing-box.service"): return False
-        output=self.listeners().stdout
-        return all(endpoint in output for endpoint in ("127.0.0.1:2080","127.0.0.1:2081","192.168.50.10:2080","172.21.0.1:2088"))
+        return self.service_active("sing-box.service")
     def docker_inspect(self, container: str) -> CommandResult:
         if container not in {"amnezia-vpn","amnezia-socks"}: raise ValueError("Unknown fixed container")
         return self.run(("/usr/bin/docker","inspect","--format","{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}",container),10)

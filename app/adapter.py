@@ -4,6 +4,8 @@ from pathlib import Path
 from .models import CreateDeviceRequest, Device, RouteEntry, Backup, now, validate_existing_device_name
 
 class MockAdapter:
+    can_toggle_devices = True
+    can_restore_backups = False
     def __init__(self, root: str | Path | None = None): self.root=Path(root or os.getenv("VORTEX_MOCK_DIR","mock"))
     def _read(self,name): return json.loads((self.root/name).read_text(encoding="utf-8"))
     def _write(self,name,data): (self.root/name).write_text(json.dumps(data,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
@@ -43,6 +45,8 @@ class MockAdapter:
         elif domain not in values: data["rules"].append({"domain_suffix":["."+domain[2:]]} if domain.startswith("*.") else {"domain":[domain]})
         self._write(f"force-{target}.json",data); self._backup(f"{'Remove' if remove else 'Add'} {target} route {domain}")
     def backups(self): return [Backup(**x) for x in self._read("backups.json")]
+    def backups_view(self): return {"records":self.backups(),"error":None}
+    def diagnostics(self): return {"status":self.status(),"logs":self.logs(),"error":None}
     def logs(self): return (self.root/"logs.txt").read_text(encoding="utf-8").splitlines()[-100:]
     def client_config(self,name):
         name=validate_existing_device_name(name); device=next((x for x in self.devices() if x.name==name),None)
@@ -62,12 +66,15 @@ class RpcAdapter:
             with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as conn:
                 conn.settimeout(8); conn.connect(self.socket_path); conn.sendall(payload.encode()); data=conn.makefile("rb").readline(16384)
         except OSError as exc: raise ConnectionError("Host agent unavailable") from exc
-        reply=json.loads(data)
+        try: reply=json.loads(data)
+        except json.JSONDecodeError as exc: raise ConnectionError("Invalid host agent response") from exc
         if reply.get("version")!=1 or reply.get("request_id")!=request_id: raise ConnectionError("Invalid host agent response")
         if not reply.get("ok"): raise ValueError(reply.get("error",{}).get("message","Host agent error"))
         return reply["result"]
 
 class ProductionAdapter:
+    can_toggle_devices = False
+    can_restore_backups = True
     def __init__(self): self.rpc=RpcAdapter()
     def _call(self,method,params=None): return self.rpc.call(method,params)
     def status(self):
@@ -83,4 +90,11 @@ class ProductionAdapter:
     def routing(self): return self._call("get_routing")
     def route_change(self,target,domain,remove=False): return self._call(("remove" if remove else "add")+f"_force_{target}",{"domain":domain})
     def backups(self): return self._call("list_backups")
+    def backups_view(self):
+        try: return {"records":self.backups(),"error":None}
+        except (ConnectionError,ValueError): return {"records":[],"error":"Unavailable"}
+    def diagnostics(self):
+        try: return {"status":self._call("get_status"),"logs":self._call("get_recent_logs"),"error":None}
+        except (ConnectionError,ValueError): return {"status":{"egress":[]},"logs":[],"error":"Unavailable"}
+    def restore_backup(self, backup_id): return self._call("restore_backup",{"backup_id":backup_id})
     def logs(self): return self._call("get_recent_logs")

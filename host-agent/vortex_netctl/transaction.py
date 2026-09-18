@@ -15,7 +15,7 @@ class TransactionResult:
     result: str; message: str = ""; backup_id: str | None = None
 
 class TransactionManager:
-    def __init__(self, system: System, backups: Path, lock_file: Path): self.system,self.backups,self.lock_file=system,backups,lock_file
+    def __init__(self, system: System, backups: Path, lock_file: Path, health_check=None): self.system,self.backups,self.lock_file,self.health_check=system,backups,lock_file,health_check
     def _write(self, path: Path, payload: bytes, source_stat: os.stat_result | None = None) -> None:
         fd=os.open(path,os.O_WRONLY|os.O_CREAT|os.O_TRUNC,0o600)
         try:
@@ -41,6 +41,8 @@ class TransactionManager:
             stale.with_suffix("").with_suffix(".json").unlink(missing_ok=True); stale.unlink(missing_ok=True)
         return bid
     def _healthy(self) -> bool:
+        if self.health_check:
+            return self.health_check()
         return self.system.singbox_healthy() if hasattr(self.system,"singbox_healthy") else self.system.service_active("sing-box.service")
 
     def apply_json(self,path:Path,candidate:dict,operation:str,validate) -> TransactionResult:

@@ -40,14 +40,14 @@ async def invalid_json(request: Request, exc: json.JSONDecodeError):
 @app.get("/",response_class=HTMLResponse)
 def overview(request:Request): return templates.TemplateResponse(request,"overview.html",ctx(request,status=adapter.status(),csrf=request.session["csrf"]))
 @app.get("/devices",response_class=HTMLResponse)
-def devices(request:Request): return templates.TemplateResponse(request,"devices.html",ctx(request,devices=adapter.devices(),csrf=request.session["csrf"]))
+def devices(request:Request): return templates.TemplateResponse(request,"devices.html",ctx(request,devices=adapter.devices(),can_toggle=adapter.can_toggle_devices,csrf=request.session["csrf"]))
 @app.post("/devices")
 def add_device(request:Request,name:str=Form(...)):
     csrf(request)
     try:
         adapter.add_device(name)
     except ValueError as exc:
-        return templates.TemplateResponse(request,"devices.html",ctx(request,devices=adapter.devices(),csrf=request.session["csrf"],error=str(exc)),status_code=422)
+        return templates.TemplateResponse(request,"devices.html",ctx(request,devices=adapter.devices(),can_toggle=adapter.can_toggle_devices,csrf=request.session["csrf"],error=str(exc)),status_code=422)
     return RedirectResponse("/devices",303)
 @app.post("/devices/{name}/{action}")
 def device_action(request:Request,name:str,action:str):
@@ -56,7 +56,7 @@ def device_action(request:Request,name:str,action:str):
     try:
         adapter.change_device(name,action)
     except ValueError as exc:
-        return templates.TemplateResponse(request,"devices.html",ctx(request,devices=adapter.devices(),csrf=request.session["csrf"],error=str(exc)),status_code=404)
+        return templates.TemplateResponse(request,"devices.html",ctx(request,devices=adapter.devices(),can_toggle=adapter.can_toggle_devices,csrf=request.session["csrf"],error=str(exc)),status_code=404)
     return RedirectResponse("/devices",303)
 @app.get("/devices/{name}/config")
 def config(request:Request,name:str):
@@ -78,8 +78,14 @@ def change_route(request:Request,target:str,domain:str=Form(...),remove:bool=For
 @app.get("/ingress",response_class=HTMLResponse)
 def ingress(request:Request): return templates.TemplateResponse(request,"ingress.html",ctx(request,status=adapter.status(),csrf=request.session["csrf"]))
 @app.get("/diagnostics",response_class=HTMLResponse)
-def diagnostics(request:Request): return templates.TemplateResponse(request,"diagnostics.html",ctx(request,logs=adapter.logs(),csrf=request.session["csrf"]))
+def diagnostics(request:Request): return templates.TemplateResponse(request,"diagnostics.html",ctx(request,diagnostics=adapter.diagnostics(),csrf=request.session["csrf"]))
 @app.get("/backups",response_class=HTMLResponse)
-def backups(request:Request): return templates.TemplateResponse(request,"backups.html",ctx(request,backups=adapter.backups(),csrf=request.session["csrf"]))
+def backups(request:Request): return templates.TemplateResponse(request,"backups.html",ctx(request,backups=adapter.backups_view(),can_restore=adapter.can_restore_backups,csrf=request.session["csrf"]))
+@app.post("/backups/{backup_id}/restore")
+def restore_backup(request:Request,backup_id:str):
+    csrf(request)
+    if not adapter.can_restore_backups: raise HTTPException(404)
+    adapter.restore_backup(backup_id)
+    return RedirectResponse("/backups",303)
 @app.get("/settings",response_class=HTMLResponse)
 def settings(request:Request): return templates.TemplateResponse(request,"settings.html",ctx(request,status=adapter.status(),csrf=request.session["csrf"]))

@@ -1,1 +1,5 @@
-{% extends 'base.html' %}{% block title %}Ingress{% endblock %}{% block content %}<section class="grid three">{% for x in status.ingress %}<article><span class="muted">{{x.name}}</span><strong>{{x.endpoint}}</strong><small>{{x.protocol}}</small></article>{% endfor %}</section><section class="card"><h2>Host local</h2><strong>127.0.0.1:2080</strong><p>Mixed · read-only in v1</p></section>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Ingress{% endblock %}
+{% block content %}
+<section class="grid">{% for x in status.ingress %}<article><span class="muted">{{ x.name }}</span><strong>{{ x.endpoint }}</strong><small>{{ x.protocol }}</small></article>{% endfor %}</section>
+{% endblock %}

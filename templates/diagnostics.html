@@ -1,2 +1,9 @@
-{% extends 'base.html' %}{% block title %}Diagnostics{% endblock %}{% block content %}<section class="card"><h2>Recent relevant logs</h2><pre>{% for line in logs %}{{line}}
-{% endfor %}</pre></section><p class="muted">Production diagnostics use typed host-agent checks for DIRECT/VPN IP, DNS, TCP and TLS. No arbitrary commands are exposed.</p>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Diagnostics{% endblock %}
+{% block content %}
+{% if diagnostics.error %}<section class="card"><strong class="bad">{{ diagnostics.error }}</strong><p class="muted">Recent host-agent diagnostics are unavailable.</p></section>{% endif %}
+<section class="grid two">{% for item in diagnostics.status.egress|default([]) %}<article><span class="muted">{{ item.name }}</span><strong>{{ item.ip }}</strong></article>{% endfor %}</section>
+<section class="card"><h2>Recent relevant logs</h2>{% if diagnostics.logs %}<pre>{% for line in diagnostics.logs %}{{ line }}
+{% endfor %}</pre>{% else %}<p class="muted">Unavailable</p>{% endif %}</section>
+<p class="muted">Production diagnostics use typed host-agent RPC only. No arbitrary commands or mock state files are read.</p>
+{% endblock %}
