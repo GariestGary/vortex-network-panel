@@ -9,6 +9,7 @@ class MockAdapter:
     def __init__(self, root: str | Path | None = None): self.root=Path(root or os.getenv("VORTEX_MOCK_DIR","mock"))
     def _read(self,name): return json.loads((self.root/name).read_text(encoding="utf-8"))
     def _write(self,name,data): (self.root/name).write_text(json.dumps(data,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+    def ingress(self): return self.status().get("ingress",[])
     def status(self): return self._read("status.json")
     def devices(self): return [Device(**x) for x in self._read("sing-box-config.json")["devices"]]
     def _save_devices(self,devices):
@@ -79,8 +80,13 @@ class ProductionAdapter:
     can_restore_backups = True
     def __init__(self): self.rpc=RpcAdapter()
     def _call(self,method,params=None): return self.rpc.call(method,params)
+    def ingress(self):
+        return self._call("get_ingress")
     def status(self):
-        try: return self._call("get_status")
+        try:
+            status=self._call("get_status")
+            status["ingress"]=self.ingress()
+            return status
         except (ConnectionError,ValueError): return {"agent_available":False,"core":[{"name":"Host agent","value":"Unavailable"}],"egress":[],"ingress":[],"settings":{}}
     def devices(self):
         data=self._call("get_devices")

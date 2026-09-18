@@ -31,9 +31,11 @@ class FakeProductionRpc:
                 "core": [{"name": "sing-box", "value": "Running"}],
                 "dependencies": [],
                 "egress": [],
-                "ingress": PRODUCTION_INGRESS,
+                "ingress": [{"name": "LAN", "endpoint": "192.168.50.10:2080", "protocol": "stale"}],
                 "settings": {"lan": {"host": "192.168.10.20", "port": 2443, "ssid": "ProductionNetwork"}, "remote": {"domain": "gateway.production.example", "port": 443}},
             }
+        if method == "get_ingress":
+            return PRODUCTION_INGRESS
         if method == "get_devices":
             return {"devices": [{"name": "remote-client", "enabled": True}], "warnings": []}
         if method == "get_recent_logs":
@@ -105,18 +107,20 @@ class IngressSystem:
         return True
 
     def listeners(self):
-        return CommandResult(0, "\n".join(item["endpoint"] for item in PRODUCTION_INGRESS))
+        return CommandResult(0, "\n".join([item["endpoint"] for item in PRODUCTION_INGRESS] + ["192.168.1.66:2082"]))
 
 
-def test_host_agent_ingress_is_read_from_singbox_inbounds(tmp_path):
+def test_host_agent_ingress_is_read_from_singbox_inbounds_not_infrastructure_config(tmp_path):
     config_path = tmp_path / "sing-box.json"
     config_path.write_text(json.dumps({"inbounds": [
         {"tag": "remote-vmess", "listen": "127.0.0.1", "listen_port": 2081, "users": []},
-        {"tag": "lan-vmess", "listen": "192.168.10.20", "listen_port": 2443, "users": []},
+        {"tag": "lan-vmess", "listen": "192.168.1.66", "listen_port": 2082, "users": []},
         {"tag": "docker-egress", "listen": "172.20.0.1", "listen_port": 8080},
         {"tag": "local-test", "listen": "127.0.0.1", "listen_port": 2080},
     ]}), encoding="utf-8")
-    config = AgentConfig(sing_box_config=config_path, backups=tmp_path / "backups", lock_file=tmp_path / "lock", lan_host="192.168.10.20", lan_port=2443, lan_ssid="ProductionNetwork", remote_domain="gateway.production.example", remote_port=443)
+    config = AgentConfig(sing_box_config=config_path, backups=tmp_path / "backups", lock_file=tmp_path / "lock", lan_host="192.168.1.66", lan_port=2082, lan_ssid="ProductionNetwork", remote_domain="gateway.production.example", remote_port=443)
     controller = Controller(config, IngressSystem())
-    assert controller.get_ingress() == PRODUCTION_INGRESS
+    ingress = controller.get_ingress()
+    assert next(item for item in ingress if item["name"] == "LAN")["endpoint"] == "192.168.1.66:2082"
+    assert all("192.168.50.10" not in item["endpoint"] for item in ingress)
     assert controller._singbox_healthy()

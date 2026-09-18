@@ -16,10 +16,10 @@ from .transaction import TransactionManager
 
 
 INGRESS_SPECS = (
-    ("Remote", ("remote-vmess",), "VMess / WS / Remote relay"),
-    ("LAN", ("lan-vmess",), "VMess TCP"),
-    ("Docker", ("docker-egress", "docker-in"), "Mixed"),
-    ("Host local", ("local-test", "host-local", "local-in"), "Mixed"),
+    ("Remote", "remote-vmess", "VMess / WS / Remote relay"),
+    ("LAN", "lan-vmess", "VMess TCP"),
+    ("Docker", "docker-egress", "Mixed"),
+    ("Host local", "local-test", "Mixed"),
 )
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SENSITIVE_LOG_VALUE = re.compile(r"(?i)\b(?:authorization|bearer|token|secret|password|private[_ -]?key)\b(?:\s*[:=]|\s+)\S+")
@@ -37,15 +37,14 @@ class Controller:
     def _rules(self, target):
         return json.loads(self.config.rule_path(target).read_text(encoding="utf-8"))
 
-    def _inbound_endpoint(self, config: dict, tags: tuple[str, ...]) -> str | None:
-        for tag in tags:
-            matches = [item for item in config.get("inbounds", []) if item.get("tag") == tag]
-            if len(matches) != 1:
-                continue
-            inbound = matches[0]
-            host, port = inbound.get("listen"), inbound.get("listen_port")
-            if isinstance(host, str) and host and isinstance(port, int) and 1 <= port <= 65535:
-                return f"{host}:{port}"
+    def _inbound_endpoint(self, config: dict, tag: str) -> str | None:
+        matches = [item for item in config.get("inbounds", []) if item.get("tag") == tag]
+        if len(matches) != 1:
+            return None
+        inbound = matches[0]
+        host, port = inbound.get("listen"), inbound.get("listen_port")
+        if isinstance(host, str) and host and isinstance(port, int) and 1 <= port <= 65535:
+            return f"{host}:{port}"
         return None
 
     def _ingress(self, config: dict) -> list[dict]:
