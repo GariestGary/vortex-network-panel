@@ -72,7 +72,7 @@ class Controller:
         return state
 
     def _client_config(self, name, uuid):
-        return {"log": {"level": "warn"}, "inbounds": [{"type": "tun", "tag": "tun-in", "address": ["10.254.254.1/30"], "auto_route": True, "strict_route": True, "stack": "mixed"}], "outbounds": [{"type": "vmess", "tag": "vortex-lan", "server": self.config.lan_host, "server_port": self.config.lan_port, "uuid": uuid, "security": "auto"}, {"type": "vmess", "tag": "vortex-remote", "server": self.config.remote_domain, "server_port": self.config.remote_port, "uuid": uuid, "security": "auto", "tls": {"enabled": True, "server_name": self.config.remote_domain}, "transport": {"type": "ws", "path": "/", "headers": {"Host": self.config.remote_domain}}}], "route": {"auto_detect_interface": True, "rules": [{"wifi_ssid": [self.config.lan_ssid], "action": "route", "outbound": "vortex-lan"}], "final": "vortex-remote"}}
+        return {"log": {"level": "warn"}, "inbounds": [{"type": "tun", "tag": "tun-in", "address": ["10.254.254.1/30"], "auto_route": True, "strict_route": True, "stack": "mixed"}], "outbounds": [{"type": "vmess", "tag": "vortex-lan", "server": self.config.lan_host, "server_port": self.config.lan_port, "uuid": uuid, "security": "auto"}, {"type": "vmess", "tag": "vortex-remote", "server": self.config.remote_domain, "server_port": self.config.remote_port, "uuid": uuid, "security": "auto", "tls": {"enabled": True, "server_name": self.config.remote_domain}, "transport": {"type": "ws", "path": "/", "headers": {"Host": self.config.remote_domain}}}], "route": {"auto_detect_interface": True, "rules": [{"wifi_ssid": list(self.config.resolved_lan_ssids), "action": "route", "outbound": "vortex-lan"}], "final": "vortex-remote"}}
 
     def mutate_device(self, operation, name):
         def prepare(current):
@@ -126,7 +126,7 @@ class Controller:
         ingress = self._ingress(config)
         core = [{"name": "sing-box", "value": "Running" if self.system.service_active("sing-box.service") else "Down"}]
         dependencies = [{"name": "amnezia-socks listener", "value": "Healthy" if "127.0.0.1:18890" in self.system.listeners().stdout else "Degraded"}, {"name": "amnezia-vpn", "value": "Healthy" if self.system.docker_inspect("amnezia-vpn").code == 0 else "Down"}, {"name": "amnezia-socks", "value": "Healthy" if self.system.docker_inspect("amnezia-socks").code == 0 else "Down"}, {"name": "awg0 (amnezia-vpn)", "value": "Healthy" if self.system.awg().code == 0 else "Down"}, {"name": "Remote relay", "value": "Healthy" if self.system.service_active("tuna-volt.service") else "Down"}]
-        return {"core": core, "dependencies": dependencies, "egress": [{"name": "DIRECT", "ip": self.test_ip(False)}, {"name": "VPN", "ip": self.test_ip(True)}], "ingress": ingress, "settings": {"lan": {"host": self.config.lan_host, "port": self.config.lan_port, "ssid": self.config.lan_ssid}, "remote": {"domain": self.config.remote_domain, "port": self.config.remote_port}}}
+        return {"core": core, "dependencies": dependencies, "egress": [{"name": "DIRECT", "ip": self.test_ip(False)}, {"name": "VPN", "ip": self.test_ip(True)}], "ingress": ingress, "settings": {"lan": {"host": self.config.lan_host, "port": self.config.lan_port, "ssid": self.config.resolved_lan_ssids[0], "ssids": list(self.config.resolved_lan_ssids)}, "remote": {"domain": self.config.remote_domain, "port": self.config.remote_port}}}
 
     def test_ip(self, socks: bool):
         result = self.system.ip_check(socks, self.config.ip_endpoint)

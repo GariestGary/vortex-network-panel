@@ -7,7 +7,7 @@
   "socket_path": "/run/vortex-netctl/vortex-netctl.sock",
   "lan_host": "192.168.50.10",
   "lan_port": 2080,
-  "lan_ssid": "ExampleWiFi",
+  "lan_ssids": ["ExampleWiFi"],
   "remote_domain": "gateway.example.com",
   "remote_port": 443,
   "ip_endpoint": "https://api.ipify.org"

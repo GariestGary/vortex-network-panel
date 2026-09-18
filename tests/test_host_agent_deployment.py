@@ -73,3 +73,31 @@ def test_installer_never_copies_example_config_or_overwrites_valid_config():
     assert 'Refusing to install config.example.json' in install
     assert '"$SCRIPT_DIR/config.example.json"' not in install
     assert 'install -o root -g vortex-netctl -m 0640 "$CONFIG_SOURCE" "$CONFIG_PATH"' in install
+
+def test_multi_ssid_config_loads_and_legacy_single_ssid_is_normalized(tmp_path):
+    multi = production_config()
+    multi.pop("lan_ssid")
+    multi["lan_ssids"] = ["Wind_5", "Wind_2_4"]
+    multi_path = tmp_path / "multi.json"
+    multi_path.write_text(json.dumps(multi), encoding="utf-8")
+    assert load_config(str(multi_path)).resolved_lan_ssids == ("Wind_5", "Wind_2_4")
+
+    legacy_path = tmp_path / "legacy.json"
+    legacy_path.write_text(json.dumps(production_config()), encoding="utf-8")
+    assert load_config(str(legacy_path)).resolved_lan_ssids == ("ProductionNetwork",)
+
+
+@pytest.mark.parametrize("ssids", [[], ["Wind_5", "Wind_5"], ["Wind_5", "Wind_5 "]])
+def test_multi_ssid_config_rejects_empty_or_duplicate_values(ssids):
+    config = production_config()
+    config.pop("lan_ssid")
+    config["lan_ssids"] = ssids
+    with pytest.raises(ValueError):
+        validate_production_config(config)
+
+
+def test_multi_ssid_config_rejects_ambiguous_legacy_and_plural_fields():
+    config = production_config()
+    config["lan_ssids"] = ["Wind_5"]
+    with pytest.raises(ValueError, match="either"):
+        validate_production_config(config)
