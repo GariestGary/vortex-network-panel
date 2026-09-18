@@ -72,7 +72,7 @@ class Controller:
         return state
 
     def _client_config(self, name, uuid):
-        return {"log": {"level": "warn"}, "inbounds": [{"type": "tun", "tag": "tun-in", "auto_route": True, "strict_route": True, "stack": "mixed"}], "outbounds": [{"type": "vmess", "tag": "vortex-lan", "server": self.config.lan_host, "server_port": self.config.lan_port, "uuid": uuid, "security": "auto"}, {"type": "vmess", "tag": "vortex-remote", "server": self.config.remote_domain, "server_port": self.config.remote_port, "uuid": uuid, "security": "auto", "tls": {"enabled": True, "server_name": self.config.remote_domain}, "transport": {"type": "ws", "path": "/", "headers": {"Host": self.config.remote_domain}}}], "route": {"auto_detect_interface": True, "rules": [{"wifi_ssid": [self.config.lan_ssid], "action": "route", "outbound": "vortex-lan"}], "final": "vortex-remote"}}
+        return {"log": {"level": "warn"}, "inbounds": [{"type": "tun", "tag": "tun-in", "address": ["10.254.254.1/30"], "auto_route": True, "strict_route": True, "stack": "mixed"}], "outbounds": [{"type": "vmess", "tag": "vortex-lan", "server": self.config.lan_host, "server_port": self.config.lan_port, "uuid": uuid, "security": "auto"}, {"type": "vmess", "tag": "vortex-remote", "server": self.config.remote_domain, "server_port": self.config.remote_port, "uuid": uuid, "security": "auto", "tls": {"enabled": True, "server_name": self.config.remote_domain}, "transport": {"type": "ws", "path": "/", "headers": {"Host": self.config.remote_domain}}}], "route": {"auto_detect_interface": True, "rules": [{"wifi_ssid": [self.config.lan_ssid], "action": "route", "outbound": "vortex-lan"}], "final": "vortex-remote"}}
 
     def mutate_device(self, operation, name):
         def prepare(current):

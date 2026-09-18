@@ -19,7 +19,18 @@ SETTINGS = {
 }
 
 
+def assert_tun_shape(config):
+    tun = config["inbounds"][0]
+    assert tun["type"] == "tun"
+    assert tun["tag"] == "tun-in"
+    assert tun["address"] == ["10.254.254.1/30"]
+    assert "inet4_address" not in tun
+    assert tun["auto_route"] is True
+    assert tun["strict_route"] is True
+    assert tun["stack"] == "mixed"
+
 def assert_client_route(config):
+    assert_tun_shape(config)
     assert config["route"]["auto_detect_interface"] is True
     assert config["route"]["rules"] == [{"wifi_ssid": ["WIND"], "action": "route", "outbound": "vortex-lan"}]
     assert config["route"]["final"] == "vortex-remote"
