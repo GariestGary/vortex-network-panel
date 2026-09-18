@@ -11,7 +11,7 @@ import tempfile
 from .config import AgentConfig
 from .rules import mutate_ruleset, normalize_domain, parse_ruleset
 from .singbox import analyze_devices, assert_device_diff_allowed, mutate_device, validate_existing_name
-from .system import System
+from .system import CommandResult, System
 from .transaction import TransactionManager
 
 
@@ -22,6 +22,8 @@ INGRESS_SPECS = (
     ("Host local", ("local-test", "host-local", "local-in"), "Mixed"),
 )
 ANSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+SENSITIVE_LOG_VALUE = re.compile(r"(?i)\b(?:authorization|bearer|token|secret|password|private[_ -]?key)\b(?:\s*[:=]|\s+)\S+")
+URI_CREDENTIALS = re.compile(r"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s/@:]+:[^\s/@]+@")
 
 
 class Controller:
@@ -74,10 +76,12 @@ class Controller:
         return {"log": {"level": "warn"}, "inbounds": [{"type": "tun", "tag": "tun-in", "auto_route": True, "strict_route": True, "stack": "mixed"}], "outbounds": [{"type": "vmess", "tag": "vortex-lan", "server": self.config.lan_host, "server_port": self.config.lan_port, "uuid": uuid, "security": "auto"}, {"type": "vmess", "tag": "vortex-remote", "server": self.config.remote_domain, "server_port": self.config.remote_port, "uuid": uuid, "security": "auto", "tls": {"enabled": True, "server_name": self.config.remote_domain}, "transport": {"type": "ws", "path": "/", "headers": {"Host": self.config.remote_domain}}}], "route": {"rules": [{"wifi_ssid": [self.config.lan_ssid], "outbound": "vortex-lan"}], "final": "vortex-remote"}}
 
     def mutate_device(self, operation, name):
-        current = self._config()
-        candidate = mutate_device(current, operation, name)
-        assert_device_diff_allowed(current, candidate)
-        return self.tx.apply_json(self.config.sing_box_config, candidate, f"{operation}_device:{name}", self.system.check_config).__dict__
+        def prepare(current):
+            candidate = mutate_device(current, operation, name)
+            assert_device_diff_allowed(current, candidate)
+            return candidate
+
+        return self.tx.apply_mutation(self.config.sing_box_config, f"{operation}_device:{name}", prepare, self.system.check_config).__dict__
 
     def get_routing(self):
         vpn, vpn_warnings = parse_ruleset(self._rules("vpn"))
@@ -87,9 +91,13 @@ class Controller:
     def _validate_rule_candidate(self, target, candidate_path: Path):
         config = deepcopy(self._config())
         expected = str(self.config.rule_path(target))
+        replacements = 0
         for entry in config.get("route", {}).get("rule_set", []):
             if entry.get("type") == "local" and entry.get("path") == expected:
                 entry["path"] = str(candidate_path)
+                replacements += 1
+        if replacements != 1:
+            return CommandResult(1, stderr="Expected exactly one managed local rule-set reference")
         fd, temp = tempfile.mkstemp(prefix=".vortex-rule-check-", suffix=".json", dir=self.config.sing_box_config.parent)
         os.close(fd)
         try:
@@ -101,11 +109,15 @@ class Controller:
     def mutate_routing(self, target, domain, remove):
         domain = normalize_domain(domain)
         other = "direct" if target == "vpn" else "vpn"
-        if not remove and domain in self.get_routing()[other]:
-            raise ValueError(f"Domain already exists in force-{other}; explicit conflict is not allowed")
         path = self.config.rule_path(target)
-        candidate = mutate_ruleset(self._rules(target), domain, remove)
-        return self.tx.apply_json(path, candidate, f"{'remove' if remove else 'add'}_{target}:{domain}", lambda candidate_path: self._validate_rule_candidate(target, candidate_path)).__dict__
+
+        def prepare(current):
+            other_domains, _ = parse_ruleset(self._rules(other))
+            if not remove and domain in other_domains:
+                raise ValueError(f"Domain already exists in force-{other}; explicit conflict is not allowed")
+            return mutate_ruleset(current, domain, remove)
+
+        return self.tx.apply_mutation(path, f"{'remove' if remove else 'add'}_{target}:{domain}", prepare, lambda candidate_path: self._validate_rule_candidate(target, candidate_path)).__dict__
 
     def get_ingress(self):
         return self._ingress(self._config())
@@ -134,8 +146,19 @@ class Controller:
     def logs(self):
         lines = []
         for unit in ("sing-box.service", "tuna-volt.service", "vortex-netctl.service"):
-            lines += [ANSI.sub("", line)[:1000] for line in self.system.journal(unit).stdout.splitlines()]
-        return lines[-150:]
+            for line in self.system.journal(unit).stdout.splitlines():
+                clean = ANSI.sub("", line)
+                clean = URI_CREDENTIALS.sub("[REDACTED_URI_CREDENTIALS]", clean)
+                clean = SENSITIVE_LOG_VALUE.sub("[REDACTED]", clean)
+                lines.append(clean[:512])
+        selected, budget = [], 8192
+        for line in reversed(lines):
+            size = len(line.encode("utf-8")) + 1
+            if size > budget:
+                break
+            selected.append(line)
+            budget -= size
+        return list(reversed(selected))
 
     def backups(self):
         output = []

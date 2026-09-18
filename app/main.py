@@ -9,11 +9,20 @@ from .adapter import MockAdapter, ProductionAdapter
 from .models import Device, is_preferred_device_name
 
 
+MODE = os.getenv("VORTEX_MODE", "mock")
+SESSION_SECRET = os.getenv("VORTEX_SESSION_SECRET")
+if MODE not in {"mock", "production"}:
+    raise RuntimeError("VORTEX_MODE must be mock or production")
+if MODE == "production" and (not SESSION_SECRET or SESSION_SECRET.startswith("unsafe-") or SESSION_SECRET.startswith("replace-")):
+    raise RuntimeError("Production requires a non-placeholder VORTEX_SESSION_SECRET")
+if not SESSION_SECRET:
+    SESSION_SECRET = "unsafe-development-secret-change-me"
+
 app=FastAPI(title="VORTEX Network Panel")
 app.mount("/static",StaticFiles(directory="static"),name="static")
 templates=Jinja2Templates(directory="templates")
-adapter = MockAdapter() if os.getenv("VORTEX_MODE", "mock") == "mock" else ProductionAdapter()
-def ctx(request, **kwargs): return {"request":request,"mode":os.getenv("VORTEX_MODE","mock"),"is_preferred_device_name":is_preferred_device_name,**kwargs}
+adapter = MockAdapter() if MODE == "mock" else ProductionAdapter()
+def ctx(request, **kwargs): return {"request":request,"mode":MODE,"is_preferred_device_name":is_preferred_device_name,**kwargs}
 def csrf(request):
     token=request.headers.get("x-csrf-token") or request.query_params.get("csrf")
     if token != request.session.get("csrf"): raise HTTPException(403,"CSRF validation failed")
@@ -24,7 +33,7 @@ async def local_host(request, call_next):
     if "csrf" not in request.session:
         import secrets; request.session["csrf"]=secrets.token_urlsafe(24)
     return await call_next(request)
-app.add_middleware(SessionMiddleware, secret_key=os.getenv("VORTEX_SESSION_SECRET","unsafe-development-secret-change-me"), https_only=False, same_site="strict")
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, https_only=False, same_site="strict")
 @app.exception_handler(ValueError)
 async def invalid_request(request: Request, exc: ValueError):
     return Response(f"Request rejected: {exc}", status_code=400, media_type="text/plain")

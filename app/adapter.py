@@ -55,6 +55,7 @@ class MockAdapter:
         return build_client_config(device,self.status()["settings"])
 
 class RpcAdapter:
+    MAX_RESPONSE_BYTES = 262144
     METHODS={"get_status","get_devices","add_device","enable_device","disable_device","delete_device","rotate_device_uuid","get_routing","add_force_vpn","remove_force_vpn","add_force_direct","remove_force_direct","get_ingress","test_direct","test_vpn","test_destination","get_recent_logs","list_backups","restore_backup"}
     def __init__(self,socket_path=None): self.socket_path=socket_path or os.getenv("VORTEX_NETCTL_SOCKET","/run/vortex-netctl/vortex-netctl.sock")
     def call(self,method,params=None):
@@ -64,7 +65,8 @@ class RpcAdapter:
         if len(payload)>8192: raise ValueError("Request exceeds size limit")
         try:
             with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as conn:
-                conn.settimeout(8); conn.connect(self.socket_path); conn.sendall(payload.encode()); data=conn.makefile("rb").readline(16384)
+                conn.settimeout(8); conn.connect(self.socket_path); conn.sendall(payload.encode()); data=conn.makefile("rb").readline(self.MAX_RESPONSE_BYTES + 1)
+                if len(data) > self.MAX_RESPONSE_BYTES: raise ConnectionError("Host agent response exceeds size limit")
         except OSError as exc: raise ConnectionError("Host agent unavailable") from exc
         try: reply=json.loads(data)
         except json.JSONDecodeError as exc: raise ConnectionError("Invalid host agent response") from exc

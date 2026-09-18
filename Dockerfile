@@ -6,7 +6,6 @@ RUN pip install --no-cache-dir .
 COPY app ./app
 COPY templates ./templates
 COPY static ./static
-COPY mock ./mock
 RUN chown -R vortex:vortex /app
 USER vortex
 EXPOSE 9080
