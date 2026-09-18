@@ -1,0 +1,34 @@
+{
+  "log": {"level": "warn"},
+  "dns": {
+    "servers": [
+      {"type": "https", "tag": "bootstrap", "server": "1.1.1.1", "server_port": 443, "path": "/dns-query", "tls": {"enabled": true, "server_name": "cloudflare-dns.com"}},
+      {"type": "fakeip", "tag": "fakeip", "inet4_range": "198.18.0.0/15"}
+    ],
+    "rules": [
+      {"query_type": "AAAA", "action": "reject"},
+      {"query_type": "A", "action": "evaluate", "server": "bootstrap", "tag": "real"},
+      {"query_type": "A", "match_response": "real", "response_rcode": "NXDOMAIN", "action": "respond"},
+      {"query_type": "A", "match_response": "real", "ip_accept_any": true, "action": "route", "server": "fakeip"},
+      {"query_type": "A", "match_response": "real", "action": "respond"}
+    ],
+    "final": "bootstrap"
+  },
+  "inbounds": [
+    {"type": "tun", "tag": "tun-in", "address": ["10.254.254.1/30"], "dns_mode": "hijack", "auto_route": true, "strict_route": true, "stack": "mixed"}
+  ],
+  "outbounds": [
+    {"type": "vmess", "tag": "vortex-lan", "server": "__VORTEX_LAN_HOST__", "server_port": "__VORTEX_LAN_PORT__", "uuid": "__VORTEX_UUID__", "security": "auto"},
+    {"type": "vmess", "tag": "vortex-remote", "server": "__VORTEX_REMOTE_DOMAIN__", "server_port": "__VORTEX_REMOTE_PORT__", "uuid": "__VORTEX_UUID__", "security": "auto", "tls": {"enabled": true, "server_name": "__VORTEX_REMOTE_DOMAIN__"}, "transport": {"type": "ws", "path": "/", "headers": {"Host": "__VORTEX_REMOTE_DOMAIN__"}}}
+  ],
+  "route": {
+    "auto_detect_interface": true,
+    "default_domain_resolver": "bootstrap",
+    "rules": [
+      {"action": "sniff"},
+      {"protocol": "dns", "action": "hijack-dns"},
+      {"wifi_ssid": "__VORTEX_LAN_SSIDS__", "action": "route", "outbound": "vortex-lan"}
+    ],
+    "final": "vortex-remote"
+  }
+}

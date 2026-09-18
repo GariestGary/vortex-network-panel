@@ -8,6 +8,7 @@ import os
 import re
 import tempfile
 
+from .client_template import render_client_template
 from .config import AgentConfig
 from .rules import mutate_ruleset, normalize_domain, parse_ruleset
 from .singbox import analyze_devices, assert_device_diff_allowed, mutate_device, validate_existing_name
@@ -72,7 +73,24 @@ class Controller:
         return state
 
     def _client_config(self, name, uuid):
-        return {"log": {"level": "warn"}, "inbounds": [{"type": "tun", "tag": "tun-in", "address": ["10.254.254.1/30"], "auto_route": True, "strict_route": True, "stack": "mixed"}], "outbounds": [{"type": "vmess", "tag": "vortex-lan", "server": self.config.lan_host, "server_port": self.config.lan_port, "uuid": uuid, "security": "auto"}, {"type": "vmess", "tag": "vortex-remote", "server": self.config.remote_domain, "server_port": self.config.remote_port, "uuid": uuid, "security": "auto", "tls": {"enabled": True, "server_name": self.config.remote_domain}, "transport": {"type": "ws", "path": "/", "headers": {"Host": self.config.remote_domain}}}], "route": {"auto_detect_interface": True, "rules": [{"wifi_ssid": list(self.config.resolved_lan_ssids), "action": "route", "outbound": "vortex-lan"}], "final": "vortex-remote"}}
+        generated = render_client_template(
+            self.config.client_template,
+            uuid=uuid,
+            lan_host=self.config.lan_host,
+            lan_port=self.config.lan_port,
+            lan_ssids=self.config.resolved_lan_ssids,
+            remote_domain=self.config.remote_domain,
+            remote_port=self.config.remote_port,
+        )
+        fd, temp = tempfile.mkstemp(prefix=".vortex-client-check-", suffix=".json", dir=self.config.client_template.parent)
+        os.close(fd)
+        try:
+            Path(temp).write_text(json.dumps(generated), encoding="utf-8")
+            if self.system.check_config(Path(temp)).code != 0:
+                raise ValueError("Generated client config failed sing-box validation")
+        finally:
+            Path(temp).unlink(missing_ok=True)
+        return generated
 
     def mutate_device(self, operation, name):
         def prepare(current):

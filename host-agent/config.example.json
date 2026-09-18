@@ -5,6 +5,7 @@
   "backups": "/var/lib/vortex-netctl/backups",
   "lock_file": "/run/lock/vortex-netctl.lock",
   "socket_path": "/run/vortex-netctl/vortex-netctl.sock",
+  "client_template": "/etc/vortex-netctl/client-template.json",
   "lan_host": "192.168.50.10",
   "lan_port": 2080,
   "lan_ssids": ["ExampleWiFi"],

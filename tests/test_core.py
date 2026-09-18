@@ -39,7 +39,8 @@ def test_routing_and_backup_rotation(mock_root):
 
 def test_client_config(mock_root):
     a=MockAdapter(mock_root); cfg=build_client_config(a.devices()[0],a.status()["settings"])
-    assert cfg["route"]["rules"][0]["wifi_ssid"] == ["ExampleWiFi"]
+    lan_rule = next(rule for rule in cfg["route"]["rules"] if "wifi_ssid" in rule)
+    assert lan_rule["wifi_ssid"] == ["ExampleWiFi"]
     assert cfg["outbounds"][1]["transport"]["type"] == "ws"
     assert cfg["outbounds"][1]["tls"]["enabled"] is True
 

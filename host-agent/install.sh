@@ -3,6 +3,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_PATH=/etc/vortex-netctl/config.json
+TEMPLATE_PATH=/etc/vortex-netctl/client-template.json
 CONFIG_SOURCE=${VORTEX_NETCTL_CONFIG_SOURCE:-}
 
 validate_config() {
@@ -45,11 +46,20 @@ install_config() {
   echo "Installed validated production config from explicit source."
 }
 
+install_template() {
+  if [[ -e "$TEMPLATE_PATH" ]]; then
+    echo "Preserving existing client template: $TEMPLATE_PATH"
+    return
+  fi
+  install -o root -g root -m 0640 "$SCRIPT_DIR/client-template.json" "$TEMPLATE_PATH"
+  echo "Installed default client template: $TEMPLATE_PATH"
+}
 [[ ${EUID} -eq 0 ]] || { echo "Run explicitly with: sudo ./host-agent/install.sh"; exit 1; }
 echo "VORTEX host-agent installation summary"
 echo "- installs Python agent under /opt/vortex-netctl"
 echo "- requires an explicit validated production config; never installs config.example.json"
 echo "- preserves an existing validated /etc/vortex-netctl/config.json"
+echo "- installs /etc/vortex-netctl/client-template.json only if absent"
 echo "- creates /var/lib/vortex-netctl/backups (root-only)"
 echo "- installs root systemd service vortex-netctl.service"
 echo "- creates socket /run/vortex-netctl/vortex-netctl.sock as root:vortex-netctl mode 0660"
@@ -63,6 +73,7 @@ command -v /usr/bin/docker >/dev/null || { echo "/usr/bin/docker is required"; e
 getent group vortex-netctl >/dev/null || groupadd --system vortex-netctl
 install -d -o root -g vortex-netctl -m 0750 /etc/vortex-netctl /var/lib/vortex-netctl /var/lib/vortex-netctl/backups /run/vortex-netctl
 install_config
+install_template
 install -d -o root -g root -m 0755 /opt/vortex-netctl
 cp -a "$SCRIPT_DIR/vortex_netctl" /opt/vortex-netctl/
 python3 -m venv /opt/vortex-netctl/venv

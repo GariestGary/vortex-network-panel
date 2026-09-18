@@ -101,3 +101,11 @@ def test_multi_ssid_config_rejects_ambiguous_legacy_and_plural_fields():
     config["lan_ssids"] = ["Wind_5"]
     with pytest.raises(ValueError, match="either"):
         validate_production_config(config)
+
+
+def test_installer_creates_default_template_only_when_absent():
+    install = (HOST_AGENT / "install.sh").read_text(encoding="utf-8")
+    assert "TEMPLATE_PATH=/etc/vortex-netctl/client-template.json" in install
+    assert '[[ -e "$TEMPLATE_PATH" ]]' in install
+    assert "Preserving existing client template" in install
+    assert 'install -o root -g root -m 0640 "$SCRIPT_DIR/client-template.json" "$TEMPLATE_PATH"' in install

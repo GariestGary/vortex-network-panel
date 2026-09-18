@@ -32,7 +32,8 @@ def assert_tun_shape(config):
 def assert_client_route(config):
     assert_tun_shape(config)
     assert config["route"]["auto_detect_interface"] is True
-    assert config["route"]["rules"] == [{"wifi_ssid": ["Wind_5", "Wind_2_4"], "action": "route", "outbound": "vortex-lan"}]
+    lan_rule = next(rule for rule in config["route"]["rules"] if "wifi_ssid" in rule)
+    assert lan_rule == {"wifi_ssid": ["Wind_5", "Wind_2_4"], "action": "route", "outbound": "vortex-lan"}
     assert config["route"]["final"] == "vortex-remote"
     lan, remote = config["outbounds"]
     assert lan["uuid"] == remote["uuid"] == UUID
@@ -49,13 +50,16 @@ def test_production_host_agent_client_config_uses_current_route_action_syntax(tm
     config = AgentConfig(
         backups=tmp_path / "backups",
         lock_file=tmp_path / "lock",
+        client_template=Path("host-agent/client-template.json"),
         lan_host="192.168.1.66",
         lan_port=2082,
         lan_ssids=("Wind_5", "Wind_2_4"),
         remote_domain="volt.jetstream.su",
         remote_port=443,
     )
-    assert_client_route(Controller(config, object())._client_config("TYPHOON", UUID))
+    class CheckSystem:
+        def check_config(self, path): return CommandResult(0)
+    assert_client_route(Controller(config, CheckSystem())._client_config("TYPHOON", UUID))
 
 
 def test_normal_device_list_and_logs_do_not_expose_uuid(tmp_path):
@@ -69,5 +73,6 @@ def test_normal_device_list_and_logs_do_not_expose_uuid(tmp_path):
         def journal(self, unit):
             return CommandResult(0, "device TYPHOON operation completed")
 
-    config = AgentConfig(backups=tmp_path / "backups", lock_file=tmp_path / "lock", lan_host="192.168.1.66", lan_port=2082, lan_ssids=("Wind_5", "Wind_2_4"), remote_domain="volt.jetstream.su", remote_port=443)
+    config = AgentConfig(backups=tmp_path / "backups", lock_file=tmp_path / "lock",
+        client_template=Path("host-agent/client-template.json"), lan_host="192.168.1.66", lan_port=2082, lan_ssids=("Wind_5", "Wind_2_4"), remote_domain="volt.jetstream.su", remote_port=443)
     assert UUID not in "\n".join(Controller(config, LogSystem()).logs())
