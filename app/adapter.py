@@ -1,7 +1,7 @@
 from __future__ import annotations
 import json, os, secrets, socket
 from pathlib import Path
-from .models import Device, RouteEntry, Backup, now
+from .models import CreateDeviceRequest, Device, RouteEntry, Backup, now, validate_existing_device_name
 
 class MockAdapter:
     def __init__(self, root: str | Path | None = None): self.root=Path(root or os.getenv("VORTEX_MOCK_DIR","mock"))
@@ -14,12 +14,12 @@ class MockAdapter:
     def _backup(self,op):
         data=self._read("backups.json"); data.insert(0,Backup(id=now(),timestamp=now(),operation=op,result="Success").model_dump()); self._write("backups.json",data[:10])
     def add_device(self,name):
-        devices=self.devices()
+        name=CreateDeviceRequest(name=name).name; devices=self.devices()
         if any(x.name==name for x in devices): raise ValueError("Device name already exists")
         import uuid
         device=Device(name=name,uuid=str(uuid.uuid4()),created_at=now()); self._save_devices(devices+[device]); self._backup(f"Add device {name}"); return device
     def change_device(self,name,action):
-        devices=self.devices(); found=next((x for x in devices if x.name==name),None)
+        name=validate_existing_device_name(name); devices=self.devices(); found=next((x for x in devices if x.name==name),None)
         if not found: raise ValueError("Device not found")
         if action=="delete": devices=[x for x in devices if x.name!=name]
         elif action=="rotate":
@@ -45,7 +45,7 @@ class MockAdapter:
     def backups(self): return [Backup(**x) for x in self._read("backups.json")]
     def logs(self): return (self.root/"logs.txt").read_text(encoding="utf-8").splitlines()[-100:]
     def client_config(self,name):
-        device=next((x for x in self.devices() if x.name==name),None)
+        name=validate_existing_device_name(name); device=next((x for x in self.devices() if x.name==name),None)
         if not device: raise ValueError("Device not found")
         from .client_config import build_client_config
         return build_client_config(device,self.status()["settings"])
@@ -77,9 +77,9 @@ class ProductionAdapter:
         data=self._call("get_devices")
         return [Device(name=x["name"],uuid="00000000-0000-0000-0000-000000000000",enabled=x.get("enabled",True)) for x in data["devices"]]
     def device_warnings(self): return self._call("get_devices").get("warnings",[])
-    def client_config(self,name): return self._call("get_devices",{"device_name":name,"include_client_config":True})["client_config"]
-    def add_device(self,name): return self._call("add_device",{"name":name})
-    def change_device(self,name,action): return self._call({"enable":"enable_device","disable":"disable_device","delete":"delete_device","rotate":"rotate_device_uuid"}[action],{"name":name})
+    def client_config(self,name): return self._call("get_devices",{"device_name":validate_existing_device_name(name),"include_client_config":True})["client_config"]
+    def add_device(self,name): return self._call("add_device",{"name":CreateDeviceRequest(name=name).name})
+    def change_device(self,name,action): return self._call({"enable":"enable_device","disable":"disable_device","delete":"delete_device","rotate":"rotate_device_uuid"}[action],{"name":validate_existing_device_name(name)})
     def routing(self): return self._call("get_routing")
     def route_change(self,target,domain,remove=False): return self._call(("remove" if remove else "add")+f"_force_{target}",{"domain":domain})
     def backups(self): return self._call("list_backups")

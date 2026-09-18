@@ -4,7 +4,7 @@ from pathlib import Path
 import ipaddress, json, os, re, tempfile
 from .config import AgentConfig
 from .rules import parse_ruleset, mutate_ruleset, normalize_domain
-from .singbox import analyze_devices, mutate_device, assert_device_diff_allowed
+from .singbox import analyze_devices, mutate_device, assert_device_diff_allowed, validate_existing_name
 from .system import System
 from .transaction import TransactionManager, TransactionResult, SUCCESS
 
@@ -18,6 +18,7 @@ class Controller:
     def get_devices(self, client_config_for: str | None = None):
         state=analyze_devices(self._config())
         if client_config_for:
+            validate_existing_name(client_config_for)
             # Explicit action only; never included in list/status responses.
             users={u["name"]:u["uuid"] for u in next(x for x in self._config()["inbounds"] if x.get("tag")=="remote-vmess")["users"]}
             if client_config_for not in users: raise ValueError("Device not found")

@@ -6,14 +6,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from .adapter import MockAdapter, ProductionAdapter
-from .models import Device
+from .models import Device, is_preferred_device_name
 
 
 app=FastAPI(title="VORTEX Network Panel")
 app.mount("/static",StaticFiles(directory="static"),name="static")
 templates=Jinja2Templates(directory="templates")
 adapter = MockAdapter() if os.getenv("VORTEX_MODE", "mock") == "mock" else ProductionAdapter()
-def ctx(request, **kwargs): return {"request":request,"mode":os.getenv("VORTEX_MODE","mock"),**kwargs}
+def ctx(request, **kwargs): return {"request":request,"mode":os.getenv("VORTEX_MODE","mock"),"is_preferred_device_name":is_preferred_device_name,**kwargs}
 def csrf(request):
     token=request.headers.get("x-csrf-token") or request.query_params.get("csrf")
     if token != request.session.get("csrf"): raise HTTPException(403,"CSRF validation failed")
@@ -44,7 +44,6 @@ def devices(request:Request): return templates.TemplateResponse(request,"devices
 @app.post("/devices")
 def add_device(request:Request,name:str=Form(...)):
     csrf(request)
-    name = "-".join(name.strip().upper().split())
     try:
         adapter.add_device(name)
     except ValueError as exc:
@@ -64,7 +63,7 @@ def config(request:Request,name:str):
     try:
         payload=adapter.client_config(name)
     except ValueError: raise HTTPException(404)
-    return Response(json.dumps(payload,indent=2),media_type="application/json",headers={"Content-Disposition":f'attachment; filename="vortex-{name.lower()}.json"'})
+    return Response(json.dumps(payload,indent=2),media_type="application/json",headers={"Content-Disposition":"attachment; filename=\"vortex-client.json\""})
 @app.get("/routing",response_class=HTMLResponse)
 def routing(request:Request): return templates.TemplateResponse(request,"routing.html",ctx(request,routes=adapter.routing(),csrf=request.session["csrf"]))
 @app.post("/routing/{target}")

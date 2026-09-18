@@ -3,6 +3,8 @@ WORKDIR /app
 COPY pyproject.toml ./
 RUN pip install --no-cache-dir ".[dev]"
 COPY app ./app
+COPY static ./static
+COPY templates ./templates
 COPY host-agent ./host-agent
 COPY mock ./mock
 COPY tests ./tests
