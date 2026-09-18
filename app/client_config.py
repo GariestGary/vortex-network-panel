@@ -8,5 +8,5 @@ def build_client_config(device: Device, settings: dict) -> dict:
         {"type":"vmess","tag":"vortex-lan","server":lan["host"],"server_port":lan["port"],"uuid":device.uuid,"security":"auto"},
         {"type":"vmess","tag":"vortex-remote","server":remote["domain"],"server_port":remote["port"],"uuid":device.uuid,"security":"auto","tls":{"enabled":True,"server_name":remote["domain"]},"transport":{"type":"ws","path":"/","headers":{"Host":remote["domain"]}}}
       ],
-      "route":{"rules":[{"wifi_ssid":[lan["ssid"]],"outbound":"vortex-lan"}],"final":"vortex-remote"}}
+      "route":{"auto_detect_interface":True,"rules":[{"wifi_ssid":[lan["ssid"]],"action":"route","outbound":"vortex-lan"}],"final":"vortex-remote"}}
 
