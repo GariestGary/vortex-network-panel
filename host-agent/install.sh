@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 [[ ${EUID} -eq 0 ]] || { echo "Run explicitly with: sudo ./host-agent/install.sh"; exit 1; }
 echo "VORTEX host-agent installation summary"
 echo "- installs Python agent under /opt/vortex-netctl"
@@ -18,12 +20,12 @@ command -v /usr/bin/docker >/dev/null || { echo "/usr/bin/docker is required"; e
 getent group vortex-netctl >/dev/null || groupadd --system vortex-netctl
 install -d -o root -g vortex-netctl -m 0750 /etc/vortex-netctl /var/lib/vortex-netctl /var/lib/vortex-netctl/backups /run/vortex-netctl
 install -d -o root -g root -m 0755 /opt/vortex-netctl
-cp -a vortex_netctl /opt/vortex-netctl/
+cp -a "$SCRIPT_DIR/vortex_netctl" /opt/vortex-netctl/
 python3 -m venv /opt/vortex-netctl/venv
-/opt/vortex-netctl/venv/bin/pip install --no-cache-dir -r requirements.txt
-[[ -e /etc/vortex-netctl/config.json ]] || install -o root -g vortex-netctl -m 0640 config.example.json /etc/vortex-netctl/config.json
-install -m 0644 vortex-netctl.service /etc/systemd/system/vortex-netctl.service
-install -m 0644 tmpfiles.conf /etc/tmpfiles.d/vortex-netctl.conf
+/opt/vortex-netctl/venv/bin/pip install --no-cache-dir -r "$SCRIPT_DIR/requirements.txt"
+[[ -e /etc/vortex-netctl/config.json ]] || install -o root -g vortex-netctl -m 0640 "$SCRIPT_DIR/config.example.json" /etc/vortex-netctl/config.json
+install -m 0644 "$SCRIPT_DIR/vortex-netctl.service" /etc/systemd/system/vortex-netctl.service
+install -m 0644 "$SCRIPT_DIR/tmpfiles.conf" /etc/tmpfiles.d/vortex-netctl.conf
 systemctl daemon-reload
 systemd-tmpfiles --create /etc/tmpfiles.d/vortex-netctl.conf
 systemctl enable --now vortex-netctl.service

@@ -26,6 +26,8 @@ Open <http://localhost:9080>.
 
 The host-agent runs on the Linux host and the web panel runs in Docker. Production settings are supplied through environment and configuration files; use the provided examples as a starting point and keep local production configuration outside version control.
 
+From the repository root, install the host-agent with `sudo ./host-agent/install.sh`.
+
 ## Security
 
 The web container is unprivileged and has no Docker socket. The host-agent exposes typed operations only, not arbitrary shell RPC. Configuration changes are validated before they are applied.

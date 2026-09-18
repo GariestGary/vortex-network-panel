@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 [[ ${EUID} -eq 0 ]] || { echo "Run explicitly with: sudo ./host-agent/uninstall.sh"; exit 1; }
 echo "Removes only the vortex-netctl program and systemd unit."
 echo "Preserves /etc/vortex-netctl and /var/lib/vortex-netctl backups/configuration."
