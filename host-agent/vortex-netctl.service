@@ -8,6 +8,7 @@ User=root
 Group=vortex-netctl
 UMask=0007
 Environment=VORTEX_AGENT_CONFIG=/etc/vortex-netctl/config.json
+WorkingDirectory=/opt/vortex-netctl
 ExecStart=/opt/vortex-netctl/venv/bin/python -m vortex_netctl.agent
 Restart=on-failure
 RestartSec=3

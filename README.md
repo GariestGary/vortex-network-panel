@@ -26,7 +26,7 @@ Open <http://localhost:9080>.
 
 The host-agent runs on the Linux host and the web panel runs in Docker. Production settings are supplied through environment and configuration files; use the provided examples as a starting point and keep local production configuration outside version control.
 
-From the repository root, install the host-agent with `sudo ./host-agent/install.sh`.
+From the repository root, install the host-agent with `sudo ./host-agent/install.sh`. Before the first install, create a root-only production JSON config outside the repository at `/etc/vortex-netctl/config.json`; `host-agent/config.example.json` is documentation only and is rejected by the installer. For a missing or placeholder config, pass an explicit validated source with `sudo env VORTEX_NETCTL_CONFIG_SOURCE=/root/vortex-netctl-production.json ./host-agent/install.sh`. Existing validated production config is preserved.
 
 ## Security
 

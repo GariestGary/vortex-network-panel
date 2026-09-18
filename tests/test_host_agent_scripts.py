@@ -14,7 +14,6 @@ def test_host_agent_scripts_resolve_local_files_from_their_own_directory():
     for path in (
         "vortex_netctl",
         "requirements.txt",
-        "config.example.json",
         "vortex-netctl.service",
         "tmpfiles.conf",
     ):
