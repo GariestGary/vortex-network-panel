@@ -14,7 +14,7 @@ services:
     ports:
       - "127.0.0.1:9080:9080"
     volumes:
-      - /run/vortex-netctl/vortex-netctl.sock:/run/vortex-netctl/vortex-netctl.sock
+      - /run/vortex-netctl:/run/vortex-netctl:ro
     group_add:
       - "${VORTEX_NETCTL_GID:?set to host vortex-netctl group GID in .env}"
     security_opt:

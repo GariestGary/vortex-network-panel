@@ -71,7 +71,13 @@ install -m 0644 "$SCRIPT_DIR/vortex-netctl.service" /etc/systemd/system/vortex-n
 install -m 0644 "$SCRIPT_DIR/tmpfiles.conf" /etc/tmpfiles.d/vortex-netctl.conf
 systemctl daemon-reload
 systemd-tmpfiles --create /etc/tmpfiles.d/vortex-netctl.conf
-systemctl enable --now vortex-netctl.service
+systemctl enable vortex-netctl.service
+systemctl restart vortex-netctl.service
+if ! systemctl is-active --quiet vortex-netctl.service; then
+  echo "vortex-netctl.service failed to become active after installation" >&2
+  systemctl --no-pager --full status vortex-netctl.service >&2 || true
+  exit 1
+fi
 echo "vortex-netctl GID: $(getent group vortex-netctl | cut -d: -f3)"
 echo "Set VORTEX_NETCTL_GID to this value in the panel .env before starting Docker."
 systemctl --no-pager --full status vortex-netctl.service

@@ -2,6 +2,7 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml ./
 COPY Dockerfile ./Dockerfile
+COPY docker-compose.yml README.md ./
 RUN pip install --no-cache-dir ".[dev]"
 COPY app ./app
 COPY static ./static
