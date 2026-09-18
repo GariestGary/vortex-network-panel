@@ -1,0 +1,22 @@
+name: vortex-network-panel
+
+services:
+  panel:
+    build: .
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    environment:
+      VORTEX_MODE: production
+      VORTEX_SESSION_SECRET: ${VORTEX_SESSION_SECRET:?set in .env}
+      VORTEX_NETCTL_SOCKET: /run/vortex-netctl/vortex-netctl.sock
+    ports:
+      - "127.0.0.1:9080:9080"
+    volumes:
+      - /run/vortex-netctl/vortex-netctl.sock:/run/vortex-netctl/vortex-netctl.sock
+    group_add:
+      - "${VORTEX_NETCTL_GID:?set to host vortex-netctl group GID in .env}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]

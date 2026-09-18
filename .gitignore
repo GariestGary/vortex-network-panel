@@ -1,0 +1,35 @@
+# Environment and local configuration
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Runtime state
+runtime/
+data/
+backups/
+logs/
+*.log
+*.sock
+
+# Local production audit and configuration material
+VORTEX_AUDIT.md
+VORTEX_CONFIG_SANITIZED.json
+vortex-panel-production-audit.md
+vortex-panel-config-sanitized.json

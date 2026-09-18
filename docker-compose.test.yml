@@ -1,0 +1,10 @@
+name: vortex-network-panel
+
+services:
+  tests:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    environment:
+      VORTEX_MODE: mock
+      VORTEX_MOCK_DIR: /app/mock

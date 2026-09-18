@@ -1,0 +1,14 @@
+name: vortex-network-panel
+
+services:
+  panel:
+    build: .
+    environment:
+      VORTEX_MODE: mock
+      VORTEX_SESSION_SECRET: development-only-change-me
+      VORTEX_MOCK_DIR: /app/mock
+    ports:
+      - "127.0.0.1:9080:9080"
+    volumes:
+      - ./mock:/app/mock
+

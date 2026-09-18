@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block title %}Settings{% endblock %}{% block content %}<section class="card"><h2>Configured infrastructure</h2><pre>{{status.settings|tojson(indent=2)}}</pre></section><p class="muted">Production configuration lives in the host-agent config file, not spread through application source.</p>{% endblock %}

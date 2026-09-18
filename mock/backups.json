@@ -1,0 +1,72 @@
+[
+  {
+    "id": "2026-09-18T20:19:49.767826+00:00",
+    "timestamp": "2026-09-18T20:19:49.767839+00:00",
+    "operation": "Remove vpn route *.example.com",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:49.400936+00:00",
+    "timestamp": "2026-09-18T20:19:49.400946+00:00",
+    "operation": "Remove vpn route video.example.com",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:49.037891+00:00",
+    "timestamp": "2026-09-18T20:19:49.037901+00:00",
+    "operation": "Remove vpn route search.example.com",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:47.783697+00:00",
+    "timestamp": "2026-09-18T20:19:47.783708+00:00",
+    "operation": "Remove direct route direct.example.com",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:26.560822+00:00",
+    "timestamp": "2026-09-18T20:19:26.560833+00:00",
+    "operation": "Add vpn route search.example.com",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:13.838434+00:00",
+    "timestamp": "2026-09-18T20:19:13.838445+00:00",
+    "operation": "Disable device TABLET_GAMMA",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:13.287517+00:00",
+    "timestamp": "2026-09-18T20:19:13.287527+00:00",
+    "operation": "Enable device TEST-19",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:12.589554+00:00",
+    "timestamp": "2026-09-18T20:19:12.589564+00:00",
+    "operation": "Disable device TEST-19",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:10.235082+00:00",
+    "timestamp": "2026-09-18T20:19:10.235093+00:00",
+    "operation": "Rotate device TEST_DEVICE_02",
+    "initiator": "panel",
+    "result": "Success"
+  },
+  {
+    "id": "2026-09-18T20:19:06.655132+00:00",
+    "timestamp": "2026-09-18T20:19:06.655142+00:00",
+    "operation": "Add device TEST_DEVICE_02",
+    "initiator": "panel",
+    "result": "Success"
+  }
+]

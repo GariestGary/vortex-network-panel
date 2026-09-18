@@ -1,0 +1,10 @@
+{
+  "inbounds": [
+    {"type": "vmess", "tag": "remote-vmess", "users": [{"name": "EXAMPLE_DEVICE", "uuid": "00000000-0000-4000-8000-000000000001"}]},
+    {"type": "vmess", "tag": "lan-vmess", "users": [{"name": "EXAMPLE_DEVICE", "uuid": "00000000-0000-4000-8000-000000000001"}]}
+  ],
+  "outbounds": [
+    {"type": "vmess", "server": "gateway.example.com", "server_port": 443, "uuid": "00000000-0000-4000-8000-000000000001"},
+    {"type": "vmess", "server": "192.168.50.10", "server_port": 2080, "uuid": "00000000-0000-4000-8000-000000000001"}
+  ]
+}

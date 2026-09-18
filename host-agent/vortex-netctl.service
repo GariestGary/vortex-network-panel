@@ -1,0 +1,20 @@
+[Unit]
+Description=VORTEX restricted network control agent
+After=network-online.target docker.service
+Wants=network-online.target
+[Service]
+Type=simple
+User=root
+Group=vortex-netctl
+UMask=0007
+Environment=VORTEX_AGENT_CONFIG=/etc/vortex-netctl/config.json
+ExecStart=/opt/vortex-netctl/venv/bin/python -m vortex_netctl.agent
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/sing-box /etc/vortex-netctl /var/lib/vortex-netctl /run/vortex-netctl /run/lock /run/docker.sock
+[Install]
+WantedBy=multi-user.target

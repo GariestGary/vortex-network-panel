@@ -1,0 +1,91 @@
+{
+  "core": [
+    {
+      "name": "sing-box",
+      "value": "Running"
+    },
+    {
+      "name": "VPN tunnel",
+      "value": "Healthy"
+    },
+    {
+      "name": "Remote relay",
+      "value": "Connected"
+    },
+    {
+      "name": "VPS",
+      "value": "Reachable"
+    }
+  ],
+  "egress": [
+    {
+      "name": "DIRECT",
+      "ip": "192.0.2.10"
+    },
+    {
+      "name": "VPN",
+      "ip": "198.51.100.20"
+    }
+  ],
+  "ingress": [
+    {
+      "name": "Remote",
+      "endpoint": "gateway.example.com :2081",
+      "protocol": "VMess / WebSocket"
+    },
+    {
+      "name": "LAN",
+      "endpoint": "192.168.50.10:2080",
+      "protocol": "VMess / TCP"
+    },
+    {
+      "name": "Docker",
+      "endpoint": "172.20.0.1:8080",
+      "protocol": "Mixed"
+    }
+  ],
+  "settings": {
+    "sing_box_config": "/etc/sing-box/config.json",
+    "force_vpn": "/etc/sing-box/rules/force-vpn.json",
+    "force_direct": "/etc/sing-box/rules/force-direct.json",
+    "sing_box_service": "sing-box.service",
+    "lan": {
+      "host": "192.168.50.10",
+      "port": 2080,
+      "ssid": "ExampleWiFi"
+    },
+    "remote": {
+      "domain": "gateway.example.com",
+      "port": 443,
+      "inbound_tag": "remote-vmess"
+    },
+    "tags": {
+      "lan_vmess": "lan-vmess",
+      "remote_vmess": "remote-vmess",
+      "docker_egress": "docker-egress",
+      "local_test": "local-test"
+    }
+  },
+  "dependencies": [
+    {
+      "value": "Healthy",
+      "name": "VPN listener"
+    },
+    {
+      "value": "Healthy",
+      "name": "VPN service"
+    },
+    {
+      "value": "Healthy",
+      "name": "VPN proxy"
+    },
+    {
+      "value": "Healthy",
+      "name": "VPN interface"
+    },
+    {
+      "value": "Healthy",
+      "name": "Remote relay"
+    }
+  ]
+}

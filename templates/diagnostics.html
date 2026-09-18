@@ -1,0 +1,2 @@
+{% extends 'base.html' %}{% block title %}Diagnostics{% endblock %}{% block content %}<section class="card"><h2>Recent relevant logs</h2><pre>{% for line in logs %}{{line}}
+{% endfor %}</pre></section><p class="muted">Production diagnostics use typed host-agent checks for DIRECT/VPN IP, DNS, TCP and TLS. No arbitrary commands are exposed.</p>{% endblock %}
