@@ -22,7 +22,10 @@ app=FastAPI(title="VORTEX Network Panel")
 app.mount("/static",StaticFiles(directory="static"),name="static")
 templates=Jinja2Templates(directory="templates")
 adapter = MockAdapter() if MODE == "mock" else ProductionAdapter()
-def ctx(request, **kwargs): return {"request":request,"mode":MODE,"is_preferred_device_name":is_preferred_device_name,**kwargs}
+def ctx(request, **kwargs):
+    return {"request":request,"mode":MODE,"is_preferred_device_name":is_preferred_device_name,"flash":request.session.pop("flash",None),**kwargs}
+def set_flash(request, message):
+    request.session["flash"] = message
 def csrf(request):
     token=request.headers.get("x-csrf-token") or request.query_params.get("csrf")
     if token != request.session.get("csrf"): raise HTTPException(403,"CSRF validation failed")
@@ -75,14 +78,29 @@ def config(request:Request,name:str):
     return Response(json.dumps(payload,indent=2),media_type="application/json",headers={"Content-Disposition":"attachment; filename=\"vortex-client.json\""})
 @app.get("/routing",response_class=HTMLResponse)
 def routing(request:Request): return templates.TemplateResponse(request,"routing.html",ctx(request,routes=adapter.routing(),csrf=request.session["csrf"]))
+def routing_flash(target, domain, remove, result):
+    action = "removed from" if remove else "added to"
+    label = "Force Direct" if target == "direct" else "Force VPN"
+    outcome = result.get("result", "SUCCESS") if isinstance(result, dict) else "SUCCESS"
+    if outcome == "SUCCESS":
+        return f"{domain} {action} {label}"
+    if outcome == "APPLY_FAILED_ROLLED_BACK":
+        verb = "remove" if remove else "add"
+        return f"Failed to {verb} {domain}. Previous configuration was restored."
+    if outcome == "APPLY_FAILED_ROLLBACK_FAILED":
+        return "CRITICAL: apply failed and automatic rollback also failed."
+    return "Rule was not applied: validation failed."
+
 @app.post("/routing/{target}")
 def change_route(request:Request,target:str,domain:str=Form(...),remove:bool=Form(False)):
     csrf(request)
     if target not in {"vpn","direct"}: raise HTTPException(404)
+    normalized = domain.strip().lower()
     try:
-        adapter.route_change(target,domain.strip().lower(),remove)
-    except ValueError as exc:
-        return templates.TemplateResponse(request,"routing.html",ctx(request,routes=adapter.routing(),csrf=request.session["csrf"],error=str(exc)),status_code=422)
+        result = adapter.route_change(target,normalized,remove)
+        set_flash(request, routing_flash(target, normalized, remove, result))
+    except ValueError:
+        set_flash(request, "Rule was not applied: validation failed.")
     return RedirectResponse("/routing",303)
 @app.get("/ingress",response_class=HTMLResponse)
 def ingress(request:Request): return templates.TemplateResponse(request,"ingress.html",ctx(request,status=adapter.status(),csrf=request.session["csrf"]))

@@ -1,5 +1,5 @@
 from __future__ import annotations
-import asyncio, grp, os
+import asyncio, grp, logging, os
 from .config import load_config
 from .controller import Controller
 from .protocol import parse_request,response
@@ -34,6 +34,7 @@ async def make_handler(controller):
         await writer.drain(); writer.close(); await writer.wait_closed()
     return handle
 async def main():
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     config=load_config(); os.makedirs(os.path.dirname(config.socket_path),mode=0o750,exist_ok=True)
     if os.path.exists(config.socket_path): os.unlink(config.socket_path)
     server=await asyncio.start_unix_server(await make_handler(Controller(config,System())),path=config.socket_path,limit=8193)
