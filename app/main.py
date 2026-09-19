@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, json
+from urllib.parse import urlsplit
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +16,13 @@ if MODE not in {"mock", "production"}:
     raise RuntimeError("VORTEX_MODE must be mock or production")
 if MODE == "production" and (not SESSION_SECRET or SESSION_SECRET.startswith("unsafe-") or SESSION_SECRET.startswith("replace-")):
     raise RuntimeError("Production requires a non-placeholder VORTEX_SESSION_SECRET")
+PUBLIC_SUBSCRIPTION_URL = os.getenv("VORTEX_PUBLIC_SUBSCRIPTION_URL", "").rstrip("/")
+if MODE == "production" and not PUBLIC_SUBSCRIPTION_URL:
+    raise RuntimeError("Production requires VORTEX_PUBLIC_SUBSCRIPTION_URL")
+if PUBLIC_SUBSCRIPTION_URL:
+    parsed_subscription_url = urlsplit(PUBLIC_SUBSCRIPTION_URL)
+    if parsed_subscription_url.scheme != "https" or not parsed_subscription_url.netloc or parsed_subscription_url.path or parsed_subscription_url.query or parsed_subscription_url.fragment or parsed_subscription_url.username or parsed_subscription_url.password:
+        raise RuntimeError("VORTEX_PUBLIC_SUBSCRIPTION_URL must be an HTTPS origin without a path, query, fragment, or credentials")
 if not SESSION_SECRET:
     SESSION_SECRET = "unsafe-development-secret-change-me"
 
@@ -23,7 +31,7 @@ app.mount("/static",StaticFiles(directory="static"),name="static")
 templates=Jinja2Templates(directory="templates")
 adapter = MockAdapter() if MODE == "mock" else ProductionAdapter()
 def ctx(request, **kwargs):
-    return {"request":request,"mode":MODE,"is_preferred_device_name":is_preferred_device_name,"flash":request.session.pop("flash",None),**kwargs}
+    return {"request":request,"mode":MODE,"is_preferred_device_name":is_preferred_device_name,"flash":request.session.pop("flash",None),"public_subscription_url":PUBLIC_SUBSCRIPTION_URL,**kwargs}
 def set_flash(request, message):
     request.session["flash"] = message
 def csrf(request):

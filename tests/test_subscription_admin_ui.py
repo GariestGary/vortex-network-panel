@@ -52,6 +52,7 @@ class AdminSubscriptionAdapter:
 def client_with_adapter(monkeypatch):
     adapter = AdminSubscriptionAdapter()
     monkeypatch.setattr(main, "adapter", adapter)
+    monkeypatch.setattr(main, "PUBLIC_SUBSCRIPTION_URL", "https://sub.example.test")
     client = TestClient(main.app)
     page = client.get("/devices")
     csrf = re.search(r"csrf=([^\"]+)", page.text).group(1)
@@ -62,10 +63,12 @@ def test_devices_page_shows_status_without_rendering_tokens(monkeypatch):
     _, _, page, _ = client_with_adapter(monkeypatch)
     assert "Active" in page.text and "Revoked" in page.text
     assert TOKEN_A not in page.text and TOKEN_B not in page.text
-    assert "Copy token" in page.text
+    assert "https://sub.example.test/s/" not in page.text
+    assert "Copy URL" in page.text and "Add to sing-box" in page.text
     assert "Rotate subscription token" in page.text
+    revoked_row = page.text.split("DEVICE_B", 1)[1]
+    assert "Copy URL" not in revoked_row and "Add to sing-box" not in revoked_row
     assert "Rotate VMess UUID" in page.text
-
 
 def test_active_token_endpoint_is_no_store_and_revoked_or_missing_is_not_found(monkeypatch):
     client, _, _, _ = client_with_adapter(monkeypatch)

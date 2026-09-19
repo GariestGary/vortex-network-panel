@@ -11,6 +11,7 @@ services:
       VORTEX_MODE: production
       VORTEX_SESSION_SECRET: ${VORTEX_SESSION_SECRET:?set in .env}
       VORTEX_NETCTL_SOCKET: /run/vortex-netctl/vortex-netctl.sock
+      VORTEX_PUBLIC_SUBSCRIPTION_URL: ${VORTEX_PUBLIC_SUBSCRIPTION_URL:?set in .env}
     ports:
       - "127.0.0.1:9080:9080"
     volumes:
