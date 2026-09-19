@@ -13,6 +13,7 @@ PLACEHOLDERS = {
     "__VORTEX_LAN_PORT__",
     "__VORTEX_LAN_SSIDS__",
     "__VORTEX_REMOTE_DOMAIN__",
+    "__VORTEX_REMOTE_IP__",
     "__VORTEX_REMOTE_PORT__",
 }
 PLACEHOLDER_PATTERN = re.compile(r"__VORTEX_[A-Z0-9_]*__")
@@ -57,6 +58,9 @@ def load_template(path: Path) -> dict[str, Any]:
     return template
 
 
+def template_uses_placeholder(path: Path, placeholder: str) -> bool:
+    return placeholder in _walk_values(load_template(path))
+
 def _replace(value: Any, replacements: dict[str, Any]) -> Any:
     if isinstance(value, dict):
         return {key: _replace(item, replacements) for key, item in value.items()}
@@ -67,16 +71,19 @@ def _replace(value: Any, replacements: dict[str, Any]) -> Any:
     return value
 
 
-def render_client_template(path: Path, *, uuid: str, lan_host: str, lan_port: int, lan_ssids: tuple[str, ...] | list[str], remote_domain: str, remote_port: int) -> dict[str, Any]:
+def render_client_template(path: Path, *, uuid: str, lan_host: str, lan_port: int, lan_ssids: tuple[str, ...] | list[str], remote_domain: str, remote_port: int, remote_ip: str | None = None) -> dict[str, Any]:
     template = load_template(path)
-    rendered = _replace(template, {
+    replacements = {
         "__VORTEX_UUID__": uuid,
         "__VORTEX_LAN_HOST__": lan_host,
         "__VORTEX_LAN_PORT__": lan_port,
         "__VORTEX_LAN_SSIDS__": list(lan_ssids),
         "__VORTEX_REMOTE_DOMAIN__": remote_domain,
         "__VORTEX_REMOTE_PORT__": remote_port,
-    })
+    }
+    if remote_ip is not None:
+        replacements["__VORTEX_REMOTE_IP__"] = remote_ip
+    rendered = _replace(template, replacements)
     remaining = [value for value in _walk_values(rendered) if PLACEHOLDER_PATTERN.search(value)]
     if remaining:
         raise ClientTemplateError("Client template contains an unresolved placeholder")

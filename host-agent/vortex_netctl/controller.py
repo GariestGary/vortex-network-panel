@@ -3,12 +3,14 @@ from __future__ import annotations
 from copy import deepcopy
 from pathlib import Path
 import ipaddress
+import logging
+import socket
 import json
 import os
 import re
 import tempfile
 
-from .client_template import ClientTemplateError, render_client_template
+from .client_template import ClientTemplateError, render_client_template, template_uses_placeholder
 from .template_versions import TemplateVersionError, TemplateVersions
 from .config import AgentConfig
 from .rules import mutate_ruleset, normalize_domain, parse_ruleset
@@ -173,7 +175,25 @@ class Controller:
         devices = self._device_uuids()
         name = self.subscriptions.device_for_token(token, set(devices))
         return self._client_config(name, devices[name])
+    def _resolve_remote_ipv4(self) -> str:
+        try:
+            return str(ipaddress.IPv4Address(self.config.remote_domain))
+        except ipaddress.AddressValueError:
+            pass
+        try:
+            records = socket.getaddrinfo(self.config.remote_domain, None, socket.AF_INET, socket.SOCK_STREAM)
+        except OSError as exc:
+            logging.getLogger("vortex_netctl.controller").warning("configured remote domain IPv4 resolution failed")
+            raise ValueError("Configured remote domain could not be resolved to IPv4") from exc
+        for record in records:
+            try:
+                return str(ipaddress.IPv4Address(record[4][0]))
+            except (IndexError, ipaddress.AddressValueError):
+                continue
+        logging.getLogger("vortex_netctl.controller").warning("configured remote domain returned no usable IPv4 address")
+        raise ValueError("Configured remote domain could not be resolved to IPv4")
     def _client_config(self, name, uuid):
+        remote_ip = self._resolve_remote_ipv4() if template_uses_placeholder(self.config.client_template, "__VORTEX_REMOTE_IP__") else None
         generated = render_client_template(
             self.config.client_template,
             uuid=uuid,
@@ -182,6 +202,7 @@ class Controller:
             lan_ssids=self.config.resolved_lan_ssids,
             remote_domain=self.config.remote_domain,
             remote_port=self.config.remote_port,
+            remote_ip=remote_ip,
         )
         fd, temp = tempfile.mkstemp(prefix=".vortex-client-check-", suffix=".json", dir=self.config.client_template.parent)
         os.close(fd)

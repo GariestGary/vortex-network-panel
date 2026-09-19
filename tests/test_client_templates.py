@@ -1,5 +1,6 @@
 import json
 import sys
+import socket
 from pathlib import Path
 
 import pytest
@@ -8,6 +9,7 @@ sys.path.insert(0, str(Path("host-agent")))
 from vortex_netctl.client_template import ClientTemplateError, load_template, render_client_template
 from vortex_netctl.config import AgentConfig, load_config
 from vortex_netctl.controller import Controller
+import vortex_netctl.controller as controller_module
 from vortex_netctl.system import CommandResult
 
 
@@ -126,3 +128,48 @@ def test_legacy_device_name_remains_compatible_with_template_generation(tmp_path
     subject = controller(tmp_path, system)
     subject.config = AgentConfig(sing_box_config=singbox, client_template=subject.config.client_template, backups=tmp_path / "backups", lock_file=tmp_path / "lock", lan_host="192.168.1.66", lan_port=2082, lan_ssids=("Wind_5",), remote_domain="volt.jetstream.su", remote_port=443)
     assert subject.get_devices("remote-client")["client_config"]["outbounds"][0]["uuid"] == UUID
+def remote_ip_template():
+    return {
+        "outbounds": [{"uuid": "__VORTEX_UUID__", "server": "__VORTEX_REMOTE_IP__", "server_port": "__VORTEX_REMOTE_PORT__"}],
+        "tls": {"server_name": "__VORTEX_REMOTE_DOMAIN__"},
+        "transport": {"headers": {"Host": "__VORTEX_REMOTE_DOMAIN__"}},
+    }
+
+
+def test_remote_ip_placeholder_uses_first_system_resolved_ipv4_and_keeps_domain_fields(tmp_path, monkeypatch):
+    system = CheckSystem()
+    subject = controller(tmp_path, system)
+    subject.config.client_template.write_text(json.dumps(remote_ip_template()), encoding="utf-8")
+    monkeypatch.setattr(controller_module.socket, "getaddrinfo", lambda *args: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("45.129.128.77", 0)),
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("45.129.128.78", 0)),
+    ])
+    generated = subject._client_config("remote-client", UUID)
+    assert generated["outbounds"][0]["server"] == "45.129.128.77"
+    assert generated["tls"]["server_name"] == "volt.jetstream.su"
+    assert generated["transport"]["headers"]["Host"] == "volt.jetstream.su"
+
+
+def test_remote_ip_placeholder_uses_configured_ipv4_without_dns_lookup(tmp_path, monkeypatch):
+    system = CheckSystem()
+    subject = controller(tmp_path, system)
+    subject.config.client_template.write_text(json.dumps(remote_ip_template()), encoding="utf-8")
+    subject.config = AgentConfig(client_template=subject.config.client_template, backups=subject.config.backups, lock_file=subject.config.lock_file, lan_host="192.168.1.66", lan_port=2082, lan_ssids=("Wind_5",), remote_domain="45.129.128.77", remote_port=443)
+    monkeypatch.setattr(controller_module.socket, "getaddrinfo", lambda *args: pytest.fail("DNS lookup must not occur for an IPv4 remote domain"))
+    assert subject._client_config("remote-client", UUID)["outbounds"][0]["server"] == "45.129.128.77"
+
+
+def test_remote_ip_resolution_failure_fails_generation_without_literal_placeholder(tmp_path, monkeypatch, caplog):
+    subject = controller(tmp_path, CheckSystem())
+    subject.config.client_template.write_text(json.dumps(remote_ip_template()), encoding="utf-8")
+    monkeypatch.setattr(controller_module.socket, "getaddrinfo", lambda *args: (_ for _ in ()).throw(socket.gaierror()))
+    with pytest.raises(ValueError, match="could not be resolved to IPv4") as error:
+        subject._client_config("remote-client", UUID)
+    assert "__VORTEX_REMOTE_IP__" not in str(error.value)
+    assert "resolution failed" in caplog.text
+
+
+def test_template_without_remote_ip_placeholder_does_not_trigger_dns_lookup(tmp_path, monkeypatch):
+    subject = controller(tmp_path, CheckSystem())
+    monkeypatch.setattr(controller_module.socket, "getaddrinfo", lambda *args: pytest.fail("DNS lookup is unnecessary without the Remote IP placeholder"))
+    assert subject._client_config("remote-client", UUID)["outbounds"][1]["server"] == "volt.jetstream.su"
