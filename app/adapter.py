@@ -112,6 +112,11 @@ class ProductionAdapter:
     can_restore_backups = True
     def __init__(self): self.rpc=RpcAdapter()
     def _call(self,method,params=None): return self.rpc.call(method,params)
+    def client_template(self): return self._call("get_client_template")
+    def validate_client_template(self, template): return self._call("validate_client_template", {"template": template})
+    def save_client_template(self, template, expected_revision): return self._call("save_client_template", {"template": template, "expected_revision": expected_revision})
+    def client_template_versions(self): return self._call("list_client_template_versions")
+    def restore_client_template_version(self, version_id, expected_revision): return self._call("restore_client_template_version", {"version_id": version_id, "expected_revision": expected_revision})
     def ingress(self):
         return self._call("get_ingress")
     def status(self):

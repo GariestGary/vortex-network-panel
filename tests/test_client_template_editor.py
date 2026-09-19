@@ -1,4 +1,5 @@
 import json
+import re
 import os
 import stat
 import sys
@@ -14,6 +15,7 @@ from vortex_netctl.protocol import parse_request
 from vortex_netctl.system import CommandResult
 
 import app.main as main
+from app.adapter import ProductionAdapter
 
 
 SOURCE_TEMPLATE = Path("host-agent/client-template.json")
@@ -130,3 +132,33 @@ def test_compose_panel_has_no_host_config_mount():
     compose = Path("docker-compose.yml").read_text(encoding="utf-8")
     panel = compose.split("  subscription:", 1)[0]
     assert "/etc/vortex-netctl" not in panel and "/run/vortex-netctl:/run/vortex-netctl:ro" in panel
+class ProductionEditorRpc:
+    def __init__(self):
+        self.template = '{"log":{"level":"warn"}}\n'
+        self.revision = "a" * 64
+        self.calls = []
+
+    def call(self, method, params=None):
+        self.calls.append((method, params or {}))
+        if method == "get_client_template": return {"template": self.template, "revision": self.revision}
+        if method == "list_client_template_versions": return [{"id":"20260101T000000Z-0000000000000000", "timestamp":"20260101T000000Z", "sha256":"b" * 64}]
+        if method == "validate_client_template": return {"valid": True, "message": "Template is valid"}
+        if method == "save_client_template": return {"valid": True, "message": "Client template saved", "revision": "b" * 64}
+        if method == "restore_client_template_version": return {"valid": True, "message": "Client template saved", "revision": "c" * 64}
+        raise AssertionError(f"Unexpected production RPC: {method}")
+
+
+def test_production_adapter_editor_routes_delegate_to_trusted_rpc(monkeypatch):
+    adapter = ProductionAdapter()
+    rpc = ProductionEditorRpc()
+    adapter.rpc = rpc
+    monkeypatch.setattr(main, "adapter", adapter)
+    client = TestClient(main.app)
+    page = client.get("/settings/client-config")
+    assert page.status_code == 200
+    csrf = re.search(r'name="vortex-csrf" content="([^"]+)"', page.text).group(1)
+    headers = {"x-csrf-token": csrf}
+    assert client.post("/settings/client-config/validate", data={"template":"{}"}, headers=headers).json()["valid"] is True
+    assert client.post("/settings/client-config/save", data={"template":"{}", "expected_revision":"a" * 64}, headers=headers).status_code == 200
+    assert client.post("/settings/client-config/restore/20260101T000000Z-0000000000000000", data={"expected_revision":"a" * 64}, headers=headers).status_code == 200
+    assert [method for method, _ in rpc.calls] == ["get_client_template", "list_client_template_versions", "validate_client_template", "save_client_template", "restore_client_template_version"]
