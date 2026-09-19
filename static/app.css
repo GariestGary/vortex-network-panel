@@ -4,3 +4,5 @@
 main > .grid,main > .split,main > .card,main > .toolbar{margin-block:var(--space)}
 
 .legacy{display:inline-block;margin-left:6px;color:var(--muted);font-size:11px;font-weight:500}
+
+.config-editor{display:block;width:100%;min-height:430px;resize:vertical;background:#0b0d11;color:var(--text);border:1px solid var(--line);border-radius:7px;padding:12px;font:13px ui-monospace,Consolas,monospace;line-height:1.45;margin:12px 0}.version-list{display:grid;gap:8px}.version-list>div{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.version-list button{margin-left:auto}

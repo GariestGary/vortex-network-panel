@@ -10,6 +10,22 @@ class MockAdapter:
     def _read(self,name): return json.loads((self.root/name).read_text(encoding="utf-8"))
     def _write(self,name,data): (self.root/name).write_text(json.dumps(data,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     def ingress(self): return self.status().get("ingress",[])
+    def client_template(self):
+        template = getattr(self, "_client_template", '{"log":{"level":"warn"}}\n')
+        return {"template": template, "revision": __import__("hashlib").sha256(template.encode()).hexdigest()}
+    def validate_client_template(self, template):
+        try:
+            value = json.loads(template)
+            return {"valid": isinstance(value, dict), "message": "Template is valid" if isinstance(value, dict) else "Client template must be a JSON object"}
+        except json.JSONDecodeError:
+            return {"valid": False, "message": "Client template JSON is invalid"}
+    def save_client_template(self, template, expected_revision):
+        if expected_revision != self.client_template()["revision"]: raise ValueError("Client template changed; reload before saving")
+        result = self.validate_client_template(template)
+        if result["valid"]: self._client_template = template; result["revision"] = self.client_template()["revision"]
+        return result
+    def client_template_versions(self): return []
+    def restore_client_template_version(self, version_id, expected_revision): raise ValueError("Template version is unavailable")
     def status(self): return self._read("status.json")
     def devices(self):
         devices = [Device(**x) for x in self._read("sing-box-config.json")["devices"]]
@@ -73,13 +89,13 @@ class MockAdapter:
 
 class RpcAdapter:
     MAX_RESPONSE_BYTES = 262144
-    METHODS={"get_status","get_devices","add_device","enable_device","disable_device","delete_device","rotate_device_uuid","get_subscription_token","rotate_subscription_token","revoke_subscription_token","get_routing","add_force_vpn","remove_force_vpn","add_force_direct","remove_force_direct","get_ingress","test_direct","test_vpn","test_destination","get_recent_logs","list_backups","restore_backup"}
+    METHODS={"get_status","get_devices","add_device","enable_device","disable_device","delete_device","rotate_device_uuid","get_subscription_token","rotate_subscription_token","revoke_subscription_token","get_client_template","validate_client_template","save_client_template","list_client_template_versions","restore_client_template_version","get_routing","add_force_vpn","remove_force_vpn","add_force_direct","remove_force_direct","get_ingress","test_direct","test_vpn","test_destination","get_recent_logs","list_backups","restore_backup"}
     def __init__(self,socket_path=None): self.socket_path=socket_path or os.getenv("VORTEX_NETCTL_SOCKET","/run/vortex-netctl/vortex-netctl.sock")
     def call(self,method,params=None):
         if method not in self.METHODS: raise ValueError("Forbidden RPC method")
         request_id=secrets.token_urlsafe(12).replace("-","a").replace("_","b")
         payload=json.dumps({"version":1,"request_id":request_id,"method":method,"params":params or {}},separators=(",",":"))+"\n"
-        if len(payload)>8192: raise ValueError("Request exceeds size limit")
+        if len(payload)>262144: raise ValueError("Request exceeds size limit")
         try:
             with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as conn:
                 conn.settimeout(8); conn.connect(self.socket_path); conn.sendall(payload.encode()); data=conn.makefile("rb").readline(self.MAX_RESPONSE_BYTES + 1)

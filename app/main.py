@@ -2,7 +2,7 @@ from __future__ import annotations
 import os, json
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request, Form, HTTPException
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
@@ -148,5 +148,34 @@ def restore_backup(request:Request,backup_id:str):
     if not adapter.can_restore_backups: raise HTTPException(404)
     adapter.restore_backup(backup_id)
     return RedirectResponse("/backups",303)
+@app.get("/settings/client-config", response_class=HTMLResponse)
+def client_config_settings(request: Request):
+    current = adapter.client_template()
+    return templates.TemplateResponse(request, "client_config.html", ctx(request, template=current["template"], revision=current["revision"], versions=adapter.client_template_versions(), csrf=request.session["csrf"]))
+
+@app.post("/settings/client-config/validate")
+def validate_client_config(request: Request, template: str = Form(...)):
+    csrf(request)
+    return JSONResponse(adapter.validate_client_template(template), headers={"Cache-Control": "no-store"})
+
+@app.post("/settings/client-config/save")
+def save_client_config(request: Request, template: str = Form(...), expected_revision: str = Form(...)):
+    csrf(request)
+    try:
+        result = adapter.save_client_template(template, expected_revision)
+    except ValueError as exc:
+        if "changed; reload" in str(exc): raise HTTPException(409, "Client template changed; reload before saving") from None
+        raise HTTPException(400, "Client template was not saved") from None
+    return JSONResponse(result, status_code=200 if result.get("valid") else 422, headers={"Cache-Control": "no-store"})
+
+@app.post("/settings/client-config/restore/{version_id}")
+def restore_client_config(request: Request, version_id: str, expected_revision: str = Form(...)):
+    csrf(request)
+    try:
+        result = adapter.restore_client_template_version(version_id, expected_revision)
+    except ValueError as exc:
+        if "changed; reload" in str(exc): raise HTTPException(409, "Client template changed; reload before restoring") from None
+        raise HTTPException(404, "Client template version not found") from None
+    return JSONResponse(result, status_code=200 if result.get("valid") else 422, headers={"Cache-Control": "no-store"})
 @app.get("/settings",response_class=HTMLResponse)
 def settings(request:Request): return templates.TemplateResponse(request,"settings.html",ctx(request,status=adapter.status(),csrf=request.session["csrf"]))

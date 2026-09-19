@@ -8,7 +8,8 @@ import os
 import re
 import tempfile
 
-from .client_template import render_client_template
+from .client_template import ClientTemplateError, render_client_template
+from .template_versions import TemplateVersionError, TemplateVersions
 from .config import AgentConfig
 from .rules import mutate_ruleset, normalize_domain, parse_ruleset
 from .singbox import analyze_devices, assert_device_diff_allowed, mutate_device, validate_existing_name
@@ -33,6 +34,7 @@ class Controller:
         self.config, self.system = config, system
         self.tx = TransactionManager(system, config.backups, config.lock_file, self._singbox_healthy)
         self.subscriptions = SubscriptionStore(config.subscription_store)
+        self.template_versions = TemplateVersions(config.client_template_versions)
 
     def _config(self):
         return json.loads(self.config.sing_box_config.read_text(encoding="utf-8"))
@@ -97,6 +99,66 @@ class Controller:
         name = validate_existing_name(name)
         self.subscriptions.revoke(name, set(self._device_uuids()))
 
+    def _template_revision(self, content: str) -> str:
+        return self.template_versions.revision(content)
+
+    def get_client_template(self) -> dict:
+        content = self.config.client_template.read_text(encoding="utf-8")
+        return {"template": content, "revision": self._template_revision(content)}
+
+    def _validate_client_template(self, content: str) -> dict:
+        if len(content.encode("utf-8")) > 131072:
+            return {"valid": False, "message": "Client template exceeds the size limit"}
+        fd, temporary = tempfile.mkstemp(prefix=".vortex-template-check-", suffix=".json", dir=self.config.client_template.parent)
+        os.close(fd)
+        template_path = Path(temporary)
+        generated_path = None
+        try:
+            template_path.write_text(content, encoding="utf-8")
+            generated = render_client_template(template_path, uuid="00000000-0000-4000-8000-000000000001", lan_host="192.0.2.10", lan_port=2082, lan_ssids=("VORTEX-VALIDATION",), remote_domain="validation.example.invalid", remote_port=443)
+            fd, generated_temporary = tempfile.mkstemp(prefix=".vortex-template-generated-", suffix=".json", dir=self.config.client_template.parent)
+            os.close(fd)
+            generated_path = Path(generated_temporary)
+            generated_path.write_text(json.dumps(generated), encoding="utf-8")
+            if self.system.check_config(generated_path).code != 0:
+                return {"valid": False, "message": "Generated client config failed sing-box validation"}
+            return {"valid": True, "message": "Template is valid"}
+        except (ClientTemplateError, json.JSONDecodeError, ValueError) as exc:
+            return {"valid": False, "message": str(exc)}
+        finally:
+            template_path.unlink(missing_ok=True)
+            if generated_path:
+                generated_path.unlink(missing_ok=True)
+
+    def validate_client_template(self, content: str) -> dict:
+        return self._validate_client_template(content)
+
+    def _save_client_template_locked(self, content: str, expected_revision: str) -> dict:
+        current = self.config.client_template.read_text(encoding="utf-8")
+        if self._template_revision(current) != expected_revision:
+            raise ValueError("Client template changed; reload before saving")
+        result = self._validate_client_template(content)
+        if not result["valid"]:
+            return result
+        source_stat = self.config.client_template.stat()
+        self.template_versions.preserve(current)
+        self.tx._atomic(self.config.client_template, content.encode("utf-8"), source_stat)
+        final = self._validate_client_template(self.config.client_template.read_text(encoding="utf-8"))
+        if not final["valid"]:
+            self.tx._atomic(self.config.client_template, current.encode("utf-8"), source_stat)
+            raise ValueError("Saved client template failed verification")
+        return {"valid": True, "message": "Client template saved", "revision": self._template_revision(content)}
+
+    def save_client_template(self, content: str, expected_revision: str) -> dict:
+        with self.tx._exclusive_lock():
+            return self._save_client_template_locked(content, expected_revision)
+
+    def list_client_template_versions(self) -> list[dict]:
+        return self.template_versions.list()
+
+    def restore_client_template_version(self, version_id: str, expected_revision: str) -> dict:
+        with self.tx._exclusive_lock():
+            return self._save_client_template_locked(self.template_versions.load(version_id), expected_revision)
     def subscription_config(self, token: str) -> dict:
         devices = self._device_uuids()
         name = self.subscriptions.device_for_token(token, set(devices))

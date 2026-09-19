@@ -19,16 +19,17 @@ async def make_handler(controller):
             request_id, method = request.request_id, request.method
             if method == "get_status": result = controller.get_status()
             elif method == "get_devices": result = controller.get_devices(getattr(params, "device_name", None))
-            elif method in {"add_device", "enable_device", "disable_device", "delete_device", "rotate_device_uuid"}:
-                result = controller.mutate_device({"add_device": "add", "enable_device": "enable", "disable_device": "disable", "delete_device": "delete", "rotate_device_uuid": "rotate"}[method], params.name)
+            elif method in {"add_device", "enable_device", "disable_device", "delete_device", "rotate_device_uuid"}: result = controller.mutate_device({"add_device": "add", "enable_device": "enable", "disable_device": "disable", "delete_device": "delete", "rotate_device_uuid": "rotate"}[method], params.name)
             elif method == "get_subscription_token": result = {"token": controller.get_subscription_token(params.name)}
             elif method == "rotate_subscription_token": result = {"token": controller.rotate_subscription_token(params.name)}
-            elif method == "revoke_subscription_token":
-                controller.revoke_subscription_token(params.name)
-                result = {"revoked": True}
+            elif method == "revoke_subscription_token": controller.revoke_subscription_token(params.name); result = {"revoked": True}
+            elif method == "get_client_template": result = controller.get_client_template()
+            elif method == "validate_client_template": result = controller.validate_client_template(params.template)
+            elif method == "save_client_template": result = controller.save_client_template(params.template, params.expected_revision)
+            elif method == "list_client_template_versions": result = controller.list_client_template_versions()
+            elif method == "restore_client_template_version": result = controller.restore_client_template_version(params.version_id, params.expected_revision)
             elif method == "get_routing": result = controller.get_routing()
-            elif method in {"add_force_vpn", "remove_force_vpn", "add_force_direct", "remove_force_direct"}:
-                result = controller.mutate_routing("vpn" if method.endswith("vpn") else "direct", params.domain, method.startswith("remove"))
+            elif method in {"add_force_vpn", "remove_force_vpn", "add_force_direct", "remove_force_direct"}: result = controller.mutate_routing("vpn" if method.endswith("vpn") else "direct", params.domain, method.startswith("remove"))
             elif method == "get_ingress": result = controller.get_ingress()
             elif method == "test_direct": result = {"ip": controller.test_ip(False)}
             elif method == "test_vpn": result = {"ip": controller.test_ip(True)}
@@ -63,24 +64,17 @@ async def make_subscription_handler(controller):
 
 def prepare_socket(path: str) -> None:
     os.makedirs(os.path.dirname(path), mode=0o750, exist_ok=True)
-    if os.path.exists(path):
-        os.unlink(path)
+    if os.path.exists(path): os.unlink(path)
 
 
 async def main():
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    config = load_config()
-    controller = Controller(config, System())
-    controller.migrate_subscriptions()
-    prepare_socket(config.socket_path)
-    prepare_socket(config.subscription_socket_path)
-    admin = await asyncio.start_unix_server(await make_handler(controller), path=config.socket_path, limit=8193)
+    config = load_config(); controller = Controller(config, System()); controller.migrate_subscriptions()
+    prepare_socket(config.socket_path); prepare_socket(config.subscription_socket_path)
+    admin = await asyncio.start_unix_server(await make_handler(controller), path=config.socket_path, limit=262145)
     subscription = await asyncio.start_unix_server(await make_subscription_handler(controller), path=config.subscription_socket_path, limit=8193)
-    os.chmod(config.socket_path, 0o660)
-    os.chmod(config.subscription_socket_path, 0o660)
-    async with admin, subscription:
-        await asyncio.gather(admin.serve_forever(), subscription.serve_forever())
+    os.chmod(config.socket_path, 0o660); os.chmod(config.subscription_socket_path, 0o660)
+    async with admin, subscription: await asyncio.gather(admin.serve_forever(), subscription.serve_forever())
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+if __name__ == "__main__": asyncio.run(main())
