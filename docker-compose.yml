@@ -20,3 +20,23 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: ["ALL"]
+  subscription:
+    build: .
+    command: ["uvicorn", "app.subscription:app", "--host", "0.0.0.0", "--port", "9081"]
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:mode=1777
+    environment:
+      VORTEX_NETCTL_SOCKET: /run/vortex-netctl/vortex-netctl.sock
+      VORTEX_SUBSCRIPTION_TOKEN: ${VORTEX_SUBSCRIPTION_TOKEN:?set in .env}
+      VORTEX_SUBSCRIPTION_DEVICE: ${VORTEX_SUBSCRIPTION_DEVICE:?set in .env}
+    ports:
+      - "127.0.0.1:9081:9081"
+    volumes:
+      - /run/vortex-netctl:/run/vortex-netctl:ro
+    group_add:
+      - "${VORTEX_NETCTL_GID:?set to host vortex-netctl group GID in .env}"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
