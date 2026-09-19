@@ -79,7 +79,11 @@ class Controller:
             if name not in devices:
                 raise ValueError("Device not found")
             return {"client_config": self._client_config(name, devices[name])}
-        return analyze_devices(self._config())
+        state = analyze_devices(self._config())
+        names = {device["name"] for device in state["devices"]}
+        for device in state["devices"]:
+            device["subscription_status"] = self.subscriptions.status_for(device["name"], names)
+        return state
 
     def get_subscription_token(self, name: str) -> str:
         name = validate_existing_name(name)

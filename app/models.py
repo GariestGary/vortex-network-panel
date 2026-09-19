@@ -38,6 +38,7 @@ class Device(BaseModel):
     name: str
     uuid: str
     enabled: bool = True
+    subscription_status: str = "active"
     created_at: str | None = None
     notes: str = ""
 
@@ -50,6 +51,13 @@ class Device(BaseModel):
     @classmethod
     def valid_uuid(cls, value: str) -> str:
         return str(uuid.UUID(value))
+
+    @field_validator("subscription_status")
+    @classmethod
+    def valid_subscription_status(cls, value: str) -> str:
+        if value not in {"active", "revoked"}:
+            raise ValueError("Subscription status must be active or revoked")
+        return value
 
     @property
     def legacy_name(self) -> bool:

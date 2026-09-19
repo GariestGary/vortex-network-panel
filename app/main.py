@@ -84,22 +84,24 @@ def subscription_token(name: str):
         raise HTTPException(404) from None
     return Response(json.dumps({"token": token}), media_type="application/json", headers={"Cache-Control": "no-store"})
 
-@app.post("/devices/{name}/subscription-token/rotate")
+@app.post("/devices/{name}/subscription/rotate")
 def rotate_subscription_token(request: Request, name: str):
     csrf(request)
     try:
-        token = adapter.rotate_subscription_token(name)
+        adapter.rotate_subscription_token(name)
     except (ConnectionError, ValueError):
         raise HTTPException(404) from None
-    return Response(json.dumps({"token": token}), media_type="application/json", headers={"Cache-Control": "no-store"})
+    return RedirectResponse("/devices", 303)
 
-@app.post("/devices/{name}/subscription-token/revoke", status_code=204)
+@app.post("/devices/{name}/subscription/revoke")
 def revoke_subscription_token(request: Request, name: str):
     csrf(request)
     try:
         adapter.revoke_subscription_token(name)
     except (ConnectionError, ValueError):
         raise HTTPException(404) from None
+    return RedirectResponse("/devices", 303)
+
 @app.get("/routing",response_class=HTMLResponse)
 def routing(request:Request): return templates.TemplateResponse(request,"routing.html",ctx(request,routes=adapter.routing(),csrf=request.session["csrf"]))
 def routing_flash(target, domain, remove, result):

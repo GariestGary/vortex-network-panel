@@ -78,6 +78,11 @@ class SubscriptionStore:
             raise ValueError("Subscription token not found")
         return record["token"]
 
+    def status_for(self, name: str, device_names: set[str]) -> str:
+        record = self.synchronize(device_names)["devices"].get(name)
+        if not record:
+            raise ValueError("Device not found")
+        return "revoked" if record["revoked"] else "active"
     def rotate(self, name: str, device_names: set[str]) -> str:
         data = self.synchronize(device_names)
         record = data["devices"].get(name)

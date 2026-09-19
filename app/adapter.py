@@ -6,12 +6,16 @@ from .models import CreateDeviceRequest, Device, RouteEntry, Backup, now, valida
 class MockAdapter:
     can_toggle_devices = True
     can_restore_backups = False
-    def __init__(self, root: str | Path | None = None): self.root=Path(root or os.getenv("VORTEX_MOCK_DIR","mock"))
+    def __init__(self, root: str | Path | None = None): self.root=Path(root or os.getenv("VORTEX_MOCK_DIR","mock")); self._subscription_tokens={}; self._revoked_subscriptions=set()
     def _read(self,name): return json.loads((self.root/name).read_text(encoding="utf-8"))
     def _write(self,name,data): (self.root/name).write_text(json.dumps(data,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
     def ingress(self): return self.status().get("ingress",[])
     def status(self): return self._read("status.json")
-    def devices(self): return [Device(**x) for x in self._read("sing-box-config.json")["devices"]]
+    def devices(self):
+        devices = [Device(**x) for x in self._read("sing-box-config.json")["devices"]]
+        for device in devices:
+            device.subscription_status = "revoked" if device.name in self._revoked_subscriptions else "active"
+        return devices
     def _save_devices(self,devices):
         data=self._read("sing-box-config.json"); data["devices"]=[x.model_dump() for x in devices]; self._write("sing-box-config.json",data)
     def _backup(self,op):
@@ -24,7 +28,7 @@ class MockAdapter:
     def change_device(self,name,action):
         name=validate_existing_device_name(name); devices=self.devices(); found=next((x for x in devices if x.name==name),None)
         if not found: raise ValueError("Device not found")
-        if action=="delete": devices=[x for x in devices if x.name!=name]
+        if action=="delete": devices=[x for x in devices if x.name!=name]; self._subscription_tokens.pop(name,None); self._revoked_subscriptions.discard(name)
         elif action=="rotate":
             import uuid
             found.uuid=str(uuid.uuid4())
@@ -49,6 +53,18 @@ class MockAdapter:
     def backups_view(self): return {"records":self.backups(),"error":None}
     def diagnostics(self): return {"status":self.status(),"logs":self.logs(),"error":None}
     def logs(self): return (self.root/"logs.txt").read_text(encoding="utf-8").splitlines()[-100:]
+    def subscription_token(self,name):
+        name=validate_existing_device_name(name)
+        if not any(device.name == name for device in self.devices()) or name in self._revoked_subscriptions: raise ValueError("Subscription token not found")
+        return self._subscription_tokens.setdefault(name,secrets.token_urlsafe(32))
+    def rotate_subscription_token(self,name):
+        name=validate_existing_device_name(name)
+        if not any(device.name == name for device in self.devices()): raise ValueError("Device not found")
+        self._revoked_subscriptions.discard(name); self._subscription_tokens[name]=secrets.token_urlsafe(32); return self._subscription_tokens[name]
+    def revoke_subscription_token(self,name):
+        name=validate_existing_device_name(name)
+        if not any(device.name == name for device in self.devices()): raise ValueError("Device not found")
+        self._subscription_tokens.pop(name,None); self._revoked_subscriptions.add(name)
     def client_config(self,name):
         name=validate_existing_device_name(name); device=next((x for x in self.devices() if x.name==name),None)
         if not device: raise ValueError("Device not found")
@@ -90,10 +106,13 @@ class ProductionAdapter:
         except (ConnectionError,ValueError): return {"agent_available":False,"core":[{"name":"Host agent","value":"Unavailable"}],"egress":[],"ingress":[],"settings":{}}
     def devices(self):
         data=self._call("get_devices")
-        return [Device(name=x["name"],uuid="00000000-0000-0000-0000-000000000000",enabled=x.get("enabled",True)) for x in data["devices"]]
+        return [Device(name=x["name"],uuid="00000000-0000-0000-0000-000000000000",enabled=x.get("enabled",True),subscription_status=x.get("subscription_status","active")) for x in data["devices"]]
     def device_warnings(self): return self._call("get_devices").get("warnings",[])
     def client_config(self,name): return self._call("get_devices",{"device_name":validate_existing_device_name(name),"include_client_config":True})["client_config"]
     def add_device(self,name): return self._call("add_device",{"name":CreateDeviceRequest(name=name).name})
+    def subscription_token(self,name): return self._call("get_subscription_token",{"name":validate_existing_device_name(name)})["token"]
+    def rotate_subscription_token(self,name): return self._call("rotate_subscription_token",{"name":validate_existing_device_name(name)})["token"]
+    def revoke_subscription_token(self,name): return self._call("revoke_subscription_token",{"name":validate_existing_device_name(name)})
     def subscription_token(self,name): return self._call("get_subscription_token",{"name":validate_existing_device_name(name)})["token"]
     def rotate_subscription_token(self,name): return self._call("rotate_subscription_token",{"name":validate_existing_device_name(name)})["token"]
     def revoke_subscription_token(self,name): return self._call("revoke_subscription_token",{"name":validate_existing_device_name(name)})
