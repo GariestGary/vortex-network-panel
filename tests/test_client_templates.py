@@ -55,15 +55,13 @@ def test_invalid_or_unknown_template_is_rejected(tmp_path, content, message):
         render(path)
 
 
-def test_missing_template_and_required_placeholder_are_rejected(tmp_path):
+def test_missing_template_is_rejected_but_optional_placeholders_may_be_absent(tmp_path):
     with pytest.raises(ClientTemplateError, match="unavailable"):
         render(tmp_path / "missing.json")
-    path = copy_template(tmp_path)
-    data = json.loads(path.read_text(encoding="utf-8"))
-    data["outbounds"][0]["uuid"] = "not-a-placeholder"
-    path.write_text(json.dumps(data), encoding="utf-8")
-    with pytest.raises(ClientTemplateError, match="required placeholder"):
-        render(path)
+    path = tmp_path / "remote-only.json"
+    path.write_text(json.dumps({"outbounds": [{"uuid": "__VORTEX_UUID__", "server": "__VORTEX_REMOTE_DOMAIN__", "server_port": "__VORTEX_REMOTE_PORT__"}]}), encoding="utf-8")
+    config = render(path)
+    assert config == {"outbounds": [{"uuid": UUID, "server": "volt.jetstream.su", "server_port": 443}]}
 
 
 def test_unresolved_placeholder_is_rejected_after_rendering(tmp_path):

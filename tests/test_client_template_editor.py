@@ -162,3 +162,21 @@ def test_production_adapter_editor_routes_delegate_to_trusted_rpc(monkeypatch):
     assert client.post("/settings/client-config/save", data={"template":"{}", "expected_revision":"a" * 64}, headers=headers).status_code == 200
     assert client.post("/settings/client-config/restore/20260101T000000Z-0000000000000000", data={"expected_revision":"a" * 64}, headers=headers).status_code == 200
     assert [method for method, _ in rpc.calls] == ["get_client_template", "list_client_template_versions", "validate_client_template", "save_client_template", "restore_client_template_version"]
+def test_save_remote_only_template_without_lan_placeholders_and_generate_subscription_config(tmp_path):
+    control = subject(tmp_path)
+    current = control.get_client_template()
+    remote_only = json.dumps({"outbounds": [{"uuid": "__VORTEX_UUID__", "server": "__VORTEX_REMOTE_DOMAIN__", "server_port": "__VORTEX_REMOTE_PORT__"}]})
+    assert control.validate_client_template(remote_only)["valid"] is True
+    assert control.save_client_template(remote_only, current["revision"])["valid"] is True
+    generated = control._client_config("DEVICE", UUID)
+    assert generated["outbounds"][0] == {"uuid": UUID, "server": "volt.example.test", "server_port": 443}
+
+
+def test_save_accepts_changed_json_structure_but_rejects_invalid_json(tmp_path):
+    control = subject(tmp_path)
+    current = control.get_client_template()
+    changed_structure = json.dumps({"custom": {"nested": ["__VORTEX_FUTURE_VALUE__"]}})
+    assert control.save_client_template(changed_structure, current["revision"])["valid"] is True
+    current = control.get_client_template()
+    rejected = control.save_client_template("{", current["revision"])
+    assert rejected["valid"] is False and "JSON" in rejected["message"]

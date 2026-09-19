@@ -133,17 +133,27 @@ class Controller:
     def validate_client_template(self, content: str) -> dict:
         return self._validate_client_template(content)
 
+    def _parse_client_template_for_save(self, content: str) -> dict:
+        if len(content.encode("utf-8")) > 131072:
+            return {"valid": False, "message": "Client template exceeds the size limit"}
+        try:
+            template = json.loads(content)
+        except json.JSONDecodeError:
+            return {"valid": False, "message": "Client template JSON is invalid"}
+        if not isinstance(template, dict):
+            return {"valid": False, "message": "Client template must be a JSON object"}
+        return {"valid": True, "message": "Client template is valid JSON"}
     def _save_client_template_locked(self, content: str, expected_revision: str) -> dict:
         current = self.config.client_template.read_text(encoding="utf-8")
         if self._template_revision(current) != expected_revision:
             raise ValueError("Client template changed; reload before saving")
-        result = self._validate_client_template(content)
+        result = self._parse_client_template_for_save(content)
         if not result["valid"]:
             return result
         source_stat = self.config.client_template.stat()
         self.template_versions.preserve(current)
         self.tx._atomic(self.config.client_template, content.encode("utf-8"), source_stat)
-        final = self._validate_client_template(self.config.client_template.read_text(encoding="utf-8"))
+        final = self._parse_client_template_for_save(self.config.client_template.read_text(encoding="utf-8"))
         if not final["valid"]:
             self.tx._atomic(self.config.client_template, current.encode("utf-8"), source_stat)
             raise ValueError("Saved client template failed verification")

@@ -15,14 +15,6 @@ PLACEHOLDERS = {
     "__VORTEX_REMOTE_DOMAIN__",
     "__VORTEX_REMOTE_PORT__",
 }
-REQUIRED_PLACEHOLDER_COUNTS = {
-    "__VORTEX_UUID__": 2,
-    "__VORTEX_LAN_HOST__": 1,
-    "__VORTEX_LAN_PORT__": 1,
-    "__VORTEX_LAN_SSIDS__": 1,
-    "__VORTEX_REMOTE_DOMAIN__": 3,
-    "__VORTEX_REMOTE_PORT__": 1,
-}
 PLACEHOLDER_PATTERN = re.compile(r"__VORTEX_[A-Z0-9_]*__")
 
 
@@ -48,9 +40,7 @@ def validate_template(template: Any) -> None:
     unknown = sorted({value for value in values if PLACEHOLDER_PATTERN.fullmatch(value) and value not in PLACEHOLDERS})
     if unknown:
         raise ClientTemplateError("Client template contains an unknown placeholder")
-    for placeholder, minimum in REQUIRED_PLACEHOLDER_COUNTS.items():
-        if values.count(placeholder) < minimum:
-            raise ClientTemplateError("Client template is missing a required placeholder")
+
 
 
 def load_template(path: Path) -> dict[str, Any]:
