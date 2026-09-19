@@ -13,6 +13,7 @@ from .config import AgentConfig
 from .rules import mutate_ruleset, normalize_domain, parse_ruleset
 from .singbox import analyze_devices, assert_device_diff_allowed, mutate_device, validate_existing_name
 from .system import CommandResult, System
+from .subscriptions import SubscriptionStore
 from .transaction import TransactionManager
 
 
@@ -31,6 +32,7 @@ class Controller:
     def __init__(self, config: AgentConfig, system: System):
         self.config, self.system = config, system
         self.tx = TransactionManager(system, config.backups, config.lock_file, self._singbox_healthy)
+        self.subscriptions = SubscriptionStore(config.subscription_store)
 
     def _config(self):
         return json.loads(self.config.sing_box_config.read_text(encoding="utf-8"))
@@ -61,17 +63,40 @@ class Controller:
         expected = [item["endpoint"] for item in self._ingress(self._config()) if item["endpoint"] != "Unavailable"]
         listening = self.system.listeners().stdout
         return all(endpoint in listening for endpoint in expected)
+    def _device_uuids(self) -> dict[str, str]:
+        config = self._config()
+        state = analyze_devices(config)
+        remote = {user["name"]: user["uuid"] for user in next(item for item in config["inbounds"] if item.get("tag") == "remote-vmess")["users"]}
+        return {device["name"]: remote[device["name"]] for device in state["devices"]}
+
+    def migrate_subscriptions(self) -> None:
+        self.subscriptions.synchronize(set(self._device_uuids()))
 
     def get_devices(self, client_config_for: str | None = None):
-        state = analyze_devices(self._config())
         if client_config_for:
-            validate_existing_name(client_config_for)
-            users = {user["name"]: user["uuid"] for user in next(item for item in self._config()["inbounds"] if item.get("tag") == "remote-vmess")["users"]}
-            if client_config_for not in users:
+            name = validate_existing_name(client_config_for)
+            devices = self._device_uuids()
+            if name not in devices:
                 raise ValueError("Device not found")
-            return {"client_config": self._client_config(client_config_for, users[client_config_for])}
-        return state
+            return {"client_config": self._client_config(name, devices[name])}
+        return analyze_devices(self._config())
 
+    def get_subscription_token(self, name: str) -> str:
+        name = validate_existing_name(name)
+        return self.subscriptions.token_for(name, set(self._device_uuids()))
+
+    def rotate_subscription_token(self, name: str) -> str:
+        name = validate_existing_name(name)
+        return self.subscriptions.rotate(name, set(self._device_uuids()))
+
+    def revoke_subscription_token(self, name: str) -> None:
+        name = validate_existing_name(name)
+        self.subscriptions.revoke(name, set(self._device_uuids()))
+
+    def subscription_config(self, token: str) -> dict:
+        devices = self._device_uuids()
+        name = self.subscriptions.device_for_token(token, set(devices))
+        return self._client_config(name, devices[name])
     def _client_config(self, name, uuid):
         generated = render_client_template(
             self.config.client_template,
@@ -98,7 +123,9 @@ class Controller:
             assert_device_diff_allowed(current, candidate)
             return candidate
 
-        return self.tx.apply_mutation(self.config.sing_box_config, f"{operation}_device:{name}", prepare, self.system.check_config).__dict__
+        result = self.tx.apply_mutation(self.config.sing_box_config, f"{operation}_device:{name}", prepare, self.system.check_config).__dict__
+        self.migrate_subscriptions()
+        return result
 
     def get_routing(self):
         vpn, vpn_warnings = parse_ruleset(self._rules("vpn"))
@@ -189,4 +216,6 @@ class Controller:
             raise ValueError("Invalid backup id")
         path = self.config.backups / f"{backup_id}.json"
         candidate = json.loads(path.read_text(encoding="utf-8"))
-        return self.tx.apply_json(self.config.sing_box_config, candidate, f"restore:{backup_id}", self.system.check_config).__dict__
+        result = self.tx.apply_json(self.config.sing_box_config, candidate, f"restore:{backup_id}", self.system.check_config).__dict__
+        self.migrate_subscriptions()
+        return result

@@ -76,6 +76,30 @@ def config(request:Request,name:str):
         payload=adapter.client_config(name)
     except ValueError: raise HTTPException(404)
     return Response(json.dumps(payload,indent=2),media_type="application/json",headers={"Content-Disposition":"attachment; filename=\"vortex-client.json\""})
+@app.get("/devices/{name}/subscription-token")
+def subscription_token(name: str):
+    try:
+        token = adapter.subscription_token(name)
+    except (ConnectionError, ValueError):
+        raise HTTPException(404) from None
+    return Response(json.dumps({"token": token}), media_type="application/json", headers={"Cache-Control": "no-store"})
+
+@app.post("/devices/{name}/subscription-token/rotate")
+def rotate_subscription_token(request: Request, name: str):
+    csrf(request)
+    try:
+        token = adapter.rotate_subscription_token(name)
+    except (ConnectionError, ValueError):
+        raise HTTPException(404) from None
+    return Response(json.dumps({"token": token}), media_type="application/json", headers={"Cache-Control": "no-store"})
+
+@app.post("/devices/{name}/subscription-token/revoke", status_code=204)
+def revoke_subscription_token(request: Request, name: str):
+    csrf(request)
+    try:
+        adapter.revoke_subscription_token(name)
+    except (ConnectionError, ValueError):
+        raise HTTPException(404) from None
 @app.get("/routing",response_class=HTMLResponse)
 def routing(request:Request): return templates.TemplateResponse(request,"routing.html",ctx(request,routes=adapter.routing(),csrf=request.session["csrf"]))
 def routing_flash(target, domain, remove, result):

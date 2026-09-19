@@ -17,6 +17,8 @@ class AgentConfig:
     backups: Path = Path("/var/lib/vortex-netctl/backups")
     lock_file: Path = Path("/run/lock/vortex-netctl.lock")
     socket_path: str = "/run/vortex-netctl/vortex-netctl.sock"
+    subscription_socket_path: str = "/run/vortex-subscription/subscription.sock"
+    subscription_store: Path = Path("/var/lib/vortex-netctl/subscriptions.json")
     client_template: Path = Path("/etc/vortex-netctl/client-template.json")
     lan_host: str = ""
     lan_port: int = 0
@@ -99,7 +101,7 @@ def load_config(path: str | None = None) -> AgentConfig:
     known = {key: raw[key] for key in AgentConfig.__dataclass_fields__ if key in raw}
     known["lan_ssids"] = normalized_lan_ssids(raw)
     known.pop("lan_ssid", None)
-    for key in ("sing_box_config", "force_vpn", "force_direct", "backups", "lock_file", "client_template"):
+    for key in ("sing_box_config", "force_vpn", "force_direct", "backups", "lock_file", "client_template", "subscription_store"):
         if key in known:
             known[key] = Path(known[key])
     return AgentConfig(**known)

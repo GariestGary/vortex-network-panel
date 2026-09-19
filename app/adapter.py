@@ -57,7 +57,7 @@ class MockAdapter:
 
 class RpcAdapter:
     MAX_RESPONSE_BYTES = 262144
-    METHODS={"get_status","get_devices","add_device","enable_device","disable_device","delete_device","rotate_device_uuid","get_routing","add_force_vpn","remove_force_vpn","add_force_direct","remove_force_direct","get_ingress","test_direct","test_vpn","test_destination","get_recent_logs","list_backups","restore_backup"}
+    METHODS={"get_status","get_devices","add_device","enable_device","disable_device","delete_device","rotate_device_uuid","get_subscription_token","rotate_subscription_token","revoke_subscription_token","get_routing","add_force_vpn","remove_force_vpn","add_force_direct","remove_force_direct","get_ingress","test_direct","test_vpn","test_destination","get_recent_logs","list_backups","restore_backup"}
     def __init__(self,socket_path=None): self.socket_path=socket_path or os.getenv("VORTEX_NETCTL_SOCKET","/run/vortex-netctl/vortex-netctl.sock")
     def call(self,method,params=None):
         if method not in self.METHODS: raise ValueError("Forbidden RPC method")
@@ -94,6 +94,9 @@ class ProductionAdapter:
     def device_warnings(self): return self._call("get_devices").get("warnings",[])
     def client_config(self,name): return self._call("get_devices",{"device_name":validate_existing_device_name(name),"include_client_config":True})["client_config"]
     def add_device(self,name): return self._call("add_device",{"name":CreateDeviceRequest(name=name).name})
+    def subscription_token(self,name): return self._call("get_subscription_token",{"name":validate_existing_device_name(name)})["token"]
+    def rotate_subscription_token(self,name): return self._call("rotate_subscription_token",{"name":validate_existing_device_name(name)})["token"]
+    def revoke_subscription_token(self,name): return self._call("revoke_subscription_token",{"name":validate_existing_device_name(name)})
     def change_device(self,name,action): return self._call({"enable":"enable_device","disable":"disable_device","delete":"delete_device","rotate":"rotate_device_uuid"}[action],{"name":validate_existing_device_name(name)})
     def routing(self): return self._call("get_routing")
     def route_change(self,target,domain,remove=False): return self._call(("remove" if remove else "add")+f"_force_{target}",{"domain":domain})
@@ -106,3 +109,39 @@ class ProductionAdapter:
         except (ConnectionError,ValueError): return {"status":{"egress":[]},"logs":[],"error":"Unavailable"}
     def restore_backup(self, backup_id): return self._call("restore_backup",{"backup_id":backup_id})
     def logs(self): return self._call("get_recent_logs")
+class SubscriptionRpcAdapter:
+    MAX_RESPONSE_BYTES = 262144
+
+    def __init__(self, socket_path=None):
+        self.socket_path = socket_path or os.getenv("VORTEX_SUBSCRIPTION_SOCKET", "/run/vortex-subscription/subscription.sock")
+
+    def client_config(self, token):
+        request_id = secrets.token_urlsafe(12).replace("-", "a").replace("_", "b")
+        payload = json.dumps({"version": 1, "request_id": request_id, "token": token}, separators=(",", ":")) + "\n"
+        try:
+            with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as conn:
+                conn.settimeout(8)
+                conn.connect(self.socket_path)
+                conn.sendall(payload.encode())
+                data = conn.makefile("rb").readline(self.MAX_RESPONSE_BYTES + 1)
+                if len(data) > self.MAX_RESPONSE_BYTES:
+                    raise ConnectionError("Subscription service response exceeds size limit")
+        except OSError as exc:
+            raise ConnectionError("Subscription host service unavailable") from exc
+        try:
+            reply = json.loads(data)
+        except json.JSONDecodeError as exc:
+            raise ConnectionError("Invalid subscription host response") from exc
+        if reply.get("version") != 1 or reply.get("request_id") != request_id:
+            raise ConnectionError("Invalid subscription host response")
+        if not reply.get("ok"):
+            raise ValueError("Subscription not found")
+        return reply["result"]["client_config"]
+
+
+class ProductionSubscriptionAdapter:
+    def __init__(self):
+        self.rpc = SubscriptionRpcAdapter()
+
+    def client_config(self, token):
+        return self.rpc.client_config(token)

@@ -19,10 +19,12 @@ def test_agent_socket_recreation_is_compatible_with_panel_reconnects():
     agent = (HOST_AGENT / "vortex_netctl" / "agent.py").read_text(encoding="utf-8")
     adapter = (ROOT / "app" / "adapter.py").read_text(encoding="utf-8")
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "if os.path.exists(config.socket_path): os.unlink(config.socket_path)" in agent
-    assert "os.chmod(config.socket_path,0o660)" in agent
+    assert "prepare_socket(config.socket_path)" in agent
+    assert "prepare_socket(config.subscription_socket_path)" in agent
+    assert "os.chmod(config.socket_path, 0o660)" in agent
+    assert "os.chmod(config.subscription_socket_path, 0o660)" in agent
     assert "with socket.socket(socket.AF_UNIX,socket.SOCK_STREAM) as conn:" in adapter
-    assert "mounts the root-owned runtime directory read-only, not the socket inode itself" in readme
+    assert "subscription service mounts only `/run/vortex-subscription`" in readme
 
 
 def test_installer_restarts_and_health_checks_agent_on_every_update():
@@ -41,5 +43,6 @@ def test_socket_directory_and_socket_permissions_remain_restricted():
     install = (HOST_AGENT / "install.sh").read_text(encoding="utf-8")
     assert "Group=vortex-netctl" in unit
     assert "UMask=0007" in unit
-    assert tmpfiles.strip() == "d /run/vortex-netctl 0750 root vortex-netctl -"
+    assert "d /run/vortex-netctl 0750 root vortex-netctl -" in tmpfiles
+    assert "d /run/vortex-subscription 0750 root vortex-netctl -" in tmpfiles
     assert "install -d -o root -g vortex-netctl -m 0750" in install

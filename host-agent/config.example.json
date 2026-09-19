@@ -8,8 +8,12 @@
   "client_template": "/etc/vortex-netctl/client-template.json",
   "lan_host": "192.168.50.10",
   "lan_port": 2080,
-  "lan_ssids": ["ExampleWiFi"],
+  "lan_ssids": [
+    "ExampleWiFi"
+  ],
   "remote_domain": "gateway.example.com",
   "remote_port": 443,
-  "ip_endpoint": "https://api.ipify.org"
+  "ip_endpoint": "https://api.ipify.org",
+  "subscription_socket_path": "/run/vortex-subscription/subscription.sock",
+  "subscription_store": "/var/lib/vortex-netctl/subscriptions.json"
 }

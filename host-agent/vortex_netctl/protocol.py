@@ -9,7 +9,7 @@ from .singbox import validate_create_name, validate_existing_name
 
 
 MAX_REQUEST_BYTES = 8192
-METHODS = {"get_status", "get_devices", "add_device", "enable_device", "disable_device", "delete_device", "rotate_device_uuid", "get_routing", "add_force_vpn", "remove_force_vpn", "add_force_direct", "remove_force_direct", "get_ingress", "test_direct", "test_vpn", "test_destination", "get_recent_logs", "list_backups", "restore_backup"}
+METHODS = {"get_status", "get_devices", "add_device", "enable_device", "disable_device", "delete_device", "rotate_device_uuid", "get_subscription_token", "rotate_subscription_token", "revoke_subscription_token", "get_routing", "add_force_vpn", "remove_force_vpn", "add_force_direct", "remove_force_direct", "get_ingress", "test_direct", "test_vpn", "test_destination", "get_recent_logs", "list_backups", "restore_backup"}
 
 
 class Params(BaseModel):
@@ -60,8 +60,15 @@ class RpcRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     version: Literal[1]
     request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
-    method: Literal["get_status", "get_devices", "add_device", "enable_device", "disable_device", "delete_device", "rotate_device_uuid", "get_routing", "add_force_vpn", "remove_force_vpn", "add_force_direct", "remove_force_direct", "get_ingress", "test_direct", "test_vpn", "test_destination", "get_recent_logs", "list_backups", "restore_backup"]
+    method: Literal["get_status", "get_devices", "add_device", "enable_device", "disable_device", "delete_device", "rotate_device_uuid", "get_subscription_token", "rotate_subscription_token", "revoke_subscription_token", "get_routing", "add_force_vpn", "remove_force_vpn", "add_force_direct", "remove_force_direct", "get_ingress", "test_direct", "test_vpn", "test_destination", "get_recent_logs", "list_backups", "restore_backup"]
     params: dict
+
+
+class SubscriptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    version: Literal[1]
+    request_id: str = Field(pattern=r"^[A-Za-z0-9_-]{8,64}$")
+    token: str = Field(min_length=1, max_length=128)
 
 
 def parse_request(line: bytes) -> tuple[RpcRequest, Params]:
@@ -74,7 +81,7 @@ def parse_request(line: bytes) -> tuple[RpcRequest, Params]:
     cls: type[Params] = Params
     if request.method == "add_device":
         cls = CreateDeviceParams
-    elif request.method in {"enable_device", "disable_device", "delete_device", "rotate_device_uuid"}:
+    elif request.method in {"enable_device", "disable_device", "delete_device", "rotate_device_uuid", "get_subscription_token", "rotate_subscription_token", "revoke_subscription_token"}:
         cls = ExistingDeviceParams
     elif request.method in {"add_force_vpn", "remove_force_vpn", "add_force_direct", "remove_force_direct"}:
         cls = DomainParams
@@ -88,6 +95,15 @@ def parse_request(line: bytes) -> tuple[RpcRequest, Params]:
         return request, cls.model_validate(request.params)
     except ValidationError as exc:
         raise ValueError("Invalid RPC parameters") from exc
+
+
+def parse_subscription_request(line: bytes) -> SubscriptionRequest:
+    if len(line) > MAX_REQUEST_BYTES:
+        raise ValueError("Request exceeds size limit")
+    try:
+        return SubscriptionRequest.model_validate_json(line)
+    except ValidationError as exc:
+        raise ValueError("Malformed subscription request") from exc
 
 
 def response(request_id: str, result=None, error: tuple[str, str] | None = None) -> bytes:
