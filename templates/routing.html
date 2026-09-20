@@ -4,10 +4,12 @@
 <div id="routing-app" data-csrf="{{csrf}}">
   <div class="routing-search">
     <label for="routing-search">Search domains</label>
-    <div class="routing-search-field">
+    <div class="routing-search-row">
       <button id="routing-back" class="routing-back tooltip" type="button" aria-label="Back to routing folders" data-tooltip="Back" hidden><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 12H5"></path><path d="m12 19-7-7 7-7"></path></svg></button>
-      <svg class="routing-search-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
-      <input id="routing-search" placeholder="Search domains and folders">
+      <div class="routing-search-field">
+        <svg class="routing-search-icon" aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"></circle><path d="m16 16 4 4"></path></svg>
+        <input id="routing-search" placeholder="Search domains and folders">
+      </div>
     </div>
   </div>
   <div id="routing-content" class="muted">Loading routing folders…</div>
