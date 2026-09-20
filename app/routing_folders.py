@@ -1,10 +1,15 @@
 from __future__ import annotations
-import json, os, tempfile, uuid
+import json, os, tempfile, uuid, random
 from pathlib import Path
+
+FOLDER_COLORS = ('#f4a5b8', '#f5c581', '#e8dd8f', '#a9d9a1', '#8fd8c2', '#91caea', '#b7b7f3', '#d6a8e8')
 
 class RoutingFolders:
     def __init__(self, path: Path): self.path = path
     def _blank(self): return {"version":1,"vpn":{"folders":[],"assignments":{}},"direct":{"folders":[],"assignments":{}}}
+    def _folder_color(self, folder):
+        color = folder.get("color")
+        return color if color in FOLDER_COLORS else FOLDER_COLORS[sum(map(ord, folder.get("id", ""))) % len(FOLDER_COLORS)]
     def _read(self):
         try:
             data=json.loads(self.path.read_text(encoding="utf-8"))
@@ -28,14 +33,14 @@ class RoutingFolders:
         for target in ("vpn","direct"):
             domains=set(routes.get(target,[])); part=data[target]; ids={f.get("id") for f in part["folders"] if isinstance(f,dict) and isinstance(f.get("id"),str)}
             assignments={d:f for d,f in part["assignments"].items() if d in domains and f in ids}
-            folders=[{"id":"common","name":"Common"}]+[{"id":f["id"],"name":f.get("name","")} for f in part["folders"] if f.get("id") in ids and f.get("name")]
+            folders=[{"id":"common","name":"Common","color":"#8fa1b6"}]+[{"id":f["id"],"name":f.get("name","") ,"color":self._folder_color(f)} for f in part["folders"] if f.get("id") in ids and f.get("name")]
             result[target]={"folders":folders,"assignments":assignments,"domains":sorted(domains)}
         # Bootstrap is deliberately read-only: missing or unwritable metadata must not hide real routing rules.
         return result
     def create(self,target,name):
         name=name.strip(); data=self._read(); part=data[target]
         if not name or len(name)>64 or any(f.get("name","").casefold()==name.casefold() for f in part["folders"]): raise ValueError("Folder name must be unique and non-empty")
-        folder={"id":uuid.uuid4().hex,"name":name};part["folders"].append(folder);self._write(data);return folder
+        folder={"id":uuid.uuid4().hex,"name":name,"color":random.choice(FOLDER_COLORS)};part["folders"].append(folder);self._write(data);return folder
     def rename(self,target,folder_id,name):
         if folder_id=="common": raise ValueError("Common cannot be renamed")
         name=name.strip();data=self._read();part=data[target]
