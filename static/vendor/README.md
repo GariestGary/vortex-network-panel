@@ -7,3 +7,5 @@
 - Bundle: `dist/json.min.js`, downloaded during development and committed to this repository.
 
 No production runtime fetches or Node/npm installation are required. To update it, use a development machine with Node/npm to rebuild an equivalent JSON bundle, or replace this file with a verified prebuilt bundle from the source project.
+
+To rebuild on a development machine only: cd tools && npm install && npm run build:codemirror. The committed bundle is what production serves.

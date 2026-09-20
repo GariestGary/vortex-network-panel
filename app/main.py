@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os, json
+from pathlib import Path
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -7,7 +8,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.sessions import SessionMiddleware
 from .adapter import MockAdapter, ProductionAdapter
-from .models import Device, is_preferred_device_name
+from .models import Device, RouteEntry, is_preferred_device_name
+from .routing_folders import RoutingFolders
 
 
 MODE = os.getenv("VORTEX_MODE", "mock")
@@ -30,6 +32,7 @@ app=FastAPI(title="VORTEX Network Panel")
 app.mount("/static",StaticFiles(directory="static"),name="static")
 templates=Jinja2Templates(directory="templates")
 adapter = MockAdapter() if MODE == "mock" else ProductionAdapter()
+routing_folders = RoutingFolders(Path(os.getenv("VORTEX_PANEL_DATA_DIR", "mock" if MODE == "mock" else "/var/lib/vortex-panel")) / "routing-folders.json")
 def ctx(request, **kwargs):
     return {"request":request,"mode":MODE,"is_preferred_device_name":is_preferred_device_name,"flash":request.session.pop("flash",None),"public_subscription_url":PUBLIC_SUBSCRIPTION_URL,**kwargs}
 def set_flash(request, message):
@@ -110,6 +113,48 @@ def revoke_subscription_token(request: Request, name: str):
         raise HTTPException(404) from None
     return RedirectResponse("/devices", 303)
 
+@app.get("/routing/state")
+def routing_state(request: Request):
+    return JSONResponse({"routes": routing_folders.state(adapter.routing())}, headers={"Cache-Control":"no-store"})
+def folder_response(fn):
+    try: return JSONResponse({"ok":True,"routes":routing_folders.state(adapter.routing()),"result":fn()})
+    except ValueError as exc: raise HTTPException(400,str(exc)) from None
+@app.post("/routing/folders/{target}")
+def create_folder(request:Request,target:str,name:str=Form(...)):
+    csrf(request)
+    if target not in {"vpn","direct"}: raise HTTPException(404)
+    return folder_response(lambda:routing_folders.create(target,name))
+@app.post("/routing/folders/{target}/{folder_id}/rename")
+def rename_folder(request:Request,target:str,folder_id:str,name:str=Form(...)):
+    csrf(request)
+    return folder_response(lambda:routing_folders.rename(target,folder_id,name))
+@app.post("/routing/folders/{target}/{folder_id}/move")
+def move_folder_domain(request:Request,target:str,folder_id:str,domain:str=Form(...)):
+    csrf(request); domain=RouteEntry(domain=domain).domain
+    if domain not in adapter.routing().get(target,[]): raise HTTPException(404,"Routing domain not found")
+    return folder_response(lambda:routing_folders.move(target,domain,folder_id))
+@app.post("/routing/folders/{target}/{folder_id}/delete")
+def delete_folder(request:Request,target:str,folder_id:str,mode:str=Form(...)):
+    csrf(request); routes=routing_folders.state(adapter.routing())[target]; domains=[d for d,f in routes["assignments"].items() if f==folder_id]
+    if mode=="common": return folder_response(lambda:routing_folders.delete(target,folder_id))
+    if mode!="domains": raise HTTPException(400,"Unknown delete mode")
+    failed=[]
+    for domain in domains:
+        try:
+            result=adapter.route_change(target,domain,True)
+            if isinstance(result,dict) and result.get("result") not in {None,"SUCCESS"}: failed.append(domain)
+        except (ValueError,OSError): failed.append(domain)
+    if failed: raise HTTPException(409,"Could not remove: "+", ".join(failed))
+    return folder_response(lambda:routing_folders.delete(target,folder_id))
+@app.post("/routing/mutate/{target}")
+def routing_mutate(request:Request,target:str,domain:str=Form(...),remove:bool=Form(False),folder_id:str=Form("common")):
+    csrf(request); domain=RouteEntry(domain=domain).domain
+    try: result=adapter.route_change(target,domain,remove)
+    except ValueError as exc: raise HTTPException(400,str(exc)) from None
+    if isinstance(result,dict) and result.get("result") not in {None,"SUCCESS"}: raise HTTPException(409,routing_flash(target,domain,remove,result))
+    if remove: routing_folders.move(target,domain,"common")
+    else: routing_folders.move(target,domain,folder_id)
+    return JSONResponse({"ok":True,"routes":routing_folders.state(adapter.routing())})
 @app.get("/routing",response_class=HTMLResponse)
 def routing(request:Request): return templates.TemplateResponse(request,"routing.html",ctx(request,routes=adapter.routing(),csrf=request.session["csrf"]))
 def routing_flash(target, domain, remove, result):

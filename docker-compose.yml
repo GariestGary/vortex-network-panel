@@ -12,10 +12,12 @@ services:
       VORTEX_SESSION_SECRET: ${VORTEX_SESSION_SECRET:?set in .env}
       VORTEX_NETCTL_SOCKET: /run/vortex-netctl/vortex-netctl.sock
       VORTEX_PUBLIC_SUBSCRIPTION_URL: ${VORTEX_PUBLIC_SUBSCRIPTION_URL:?set in .env}
+      VORTEX_PANEL_DATA_DIR: /var/lib/vortex-panel
     ports:
       - "127.0.0.1:9080:9080"
     volumes:
       - /run/vortex-netctl:/run/vortex-netctl:ro
+      - panel-data:/var/lib/vortex-panel
     group_add:
       - "${VORTEX_NETCTL_GID:?set to host vortex-netctl group GID in .env}"
     security_opt:
@@ -39,3 +41,5 @@ services:
     security_opt:
       - no-new-privileges:true
     cap_drop: ["ALL"]
+volumes:
+  panel-data:
