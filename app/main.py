@@ -127,7 +127,9 @@ def routing_state(request: Request):
         raise HTTPException(503, "Routing folder storage is unavailable") from exc
     return JSONResponse({"routes": routes}, headers={"Cache-Control":"no-store"})
 def folder_response(fn):
-    try: return JSONResponse({"ok":True,"routes":routing_folders.state(adapter.routing()),"result":fn()})
+    try:
+        result = fn()
+        return JSONResponse({"ok":True,"routes":routing_folders.state(adapter.routing()),"result":result})
     except ValueError as exc: raise HTTPException(400,str(exc)) from None
 @app.post("/routing/folders/{target}")
 def create_folder(request:Request,target:str,name:str=Form(...)):
