@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, json
+import os, json, logging
 from pathlib import Path
 from urllib.parse import urlsplit
 from fastapi import FastAPI, Request, Form, HTTPException
@@ -115,7 +115,17 @@ def revoke_subscription_token(request: Request, name: str):
 
 @app.get("/routing/state")
 def routing_state(request: Request):
-    return JSONResponse({"routes": routing_folders.state(adapter.routing())}, headers={"Cache-Control":"no-store"})
+    try:
+        routing = adapter.routing()
+    except OSError as exc:
+        logging.getLogger(__name__).exception("Routing service is unavailable")
+        raise HTTPException(503, "Routing service is unavailable") from exc
+    try:
+        routes = routing_folders.state(routing)
+    except OSError as exc:
+        logging.getLogger(__name__).exception("Routing folder storage is unavailable")
+        raise HTTPException(503, "Routing folder storage is unavailable") from exc
+    return JSONResponse({"routes": routes}, headers={"Cache-Control":"no-store"})
 def folder_response(fn):
     try: return JSONResponse({"ok":True,"routes":routing_folders.state(adapter.routing()),"result":fn()})
     except ValueError as exc: raise HTTPException(400,str(exc)) from None

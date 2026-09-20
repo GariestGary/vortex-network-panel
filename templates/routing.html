@@ -1,3 +1,23 @@
-{% extends 'base.html' %}{% block title %}Routing<script defer src="/static/routing.js"></script>{% endblock %}{% block content %}
-<div id="routing-app" data-csrf="{{csrf}}"><div class="routing-search"><label for="routing-search">Search domains</label><input id="routing-search" placeholder="Search domains and folders"></div><div id="routing-content" class="muted">Loading routing folders…</div></div><div id="folder-dialog" class="dialog-backdrop" hidden><section class="dialog" role="dialog" aria-modal="true"><h2 id="dialog-title">Delete folder</h2><p id="dialog-copy"></p><div class="dialog-actions"><button class="danger" id="delete-domains">Delete with domains</button><button id="move-common">Move domains to Common</button><button id="dialog-cancel">Cancel</button></div></section></div>
-<script defer src="/static/routing.js"></script>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Routing{% endblock %}
+{% block content %}
+<div id="routing-app" data-csrf="{{csrf}}">
+  <div class="routing-search">
+    <label for="routing-search">Search domains</label>
+    <input id="routing-search" placeholder="Search domains and folders">
+  </div>
+  <div id="routing-content" class="muted">Loading routing folders…</div>
+</div>
+<div id="folder-dialog" class="dialog-backdrop" hidden>
+  <section class="dialog" role="dialog" aria-modal="true" aria-labelledby="dialog-title">
+    <h2 id="dialog-title">Delete folder</h2>
+    <p id="dialog-copy"></p>
+    <div class="dialog-actions">
+      <button class="danger" id="delete-domains">Delete with domains</button>
+      <button id="move-common">Move domains to Common</button>
+      <button id="dialog-cancel">Cancel</button>
+    </div>
+  </section>
+</div>
+<script defer src="/static/routing.js"></script>
+{% endblock %}

@@ -6,7 +6,7 @@ RUN pip install --no-cache-dir .
 COPY app ./app
 COPY templates ./templates
 COPY static ./static
-RUN chown -R vortex:vortex /app
+RUN mkdir -p /var/lib/vortex-panel && chown -R vortex:vortex /app /var/lib/vortex-panel
 USER vortex
 EXPOSE 9080 9081
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "9080"]

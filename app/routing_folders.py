@@ -30,8 +30,8 @@ class RoutingFolders:
             assignments={d:f for d,f in part["assignments"].items() if d in domains and f in ids}
             folders=[{"id":"common","name":"Common"}]+[{"id":f["id"],"name":f.get("name","")} for f in part["folders"] if f.get("id") in ids and f.get("name")]
             result[target]={"folders":folders,"assignments":assignments,"domains":sorted(domains)}
-            data[target]["assignments"]=assignments
-        self._write(data); return result
+        # Bootstrap is deliberately read-only: missing or unwritable metadata must not hide real routing rules.
+        return result
     def create(self,target,name):
         name=name.strip(); data=self._read(); part=data[target]
         if not name or len(name)>64 or any(f.get("name","").casefold()==name.casefold() for f in part["folders"]): raise ValueError("Folder name must be unique and non-empty")
