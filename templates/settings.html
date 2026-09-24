@@ -4,8 +4,8 @@
 <section id="vpn-settings" class="card" data-csrf="{{csrf}}" data-provider="{{vpn.provider|default('')}}">
   <h2>VPN Provider</h2>
   <p id="vpn-provider-status" class="muted">{{vpn.provider|default('Unavailable')|upper}} · {{vpn.status|default('unavailable')}}</p>
-  <div class="actions"><button data-provider="amnezia" {% if vpn.provider == 'amnezia' %}disabled{% endif %}>AMNEZIA</button><button data-provider="hyvpn" {% if vpn.provider == 'hyvpn' %}disabled{% endif %}>HYVPN</button></div>
-  <div id="hyvpn-exit" {% if vpn.provider != 'hyvpn' %}hidden{% endif %}><label>HYVPN exit <select id="hyvpn-profile">{% for profile in hyvpn.profiles|default([]) %}<option value="{{profile.id}}" {% if profile.id == hyvpn.selectedProfile %}selected{% endif %}>{{profile.remarks or profile.serverDescription or profile.id}}</option>{% endfor %}</select></label><button id="apply-hyvpn-profile">Apply exit</button></div>
+  <div class="actions vpn-provider-actions"><button data-provider="amnezia" {% if vpn.provider == 'amnezia' %}disabled{% endif %}>AMNEZIA</button><button data-provider="hyvpn" {% if vpn.provider == 'hyvpn' %}disabled{% endif %}>HYVPN</button></div>
+  <div id="hyvpn-exit" class="hyvpn-exit-row" {% if vpn.provider != 'hyvpn' %}hidden{% endif %}><label>HYVPN exit <select id="hyvpn-profile">{% for profile in hyvpn.profiles|default([]) %}<option value="{{profile.id}}" {% if profile.id == hyvpn.selectedProfile %}selected{% endif %}>{{profile.remarks or profile.serverDescription or profile.id}}</option>{% endfor %}</select></label><button id="apply-hyvpn-profile" class="icon-button tooltip" type="button" aria-label="Apply HYVPN exit" data-tooltip="Apply exit"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"></path></svg></button></div>
 </section>
 <section class="card"><h2>Configured infrastructure</h2><pre>{{status.settings|tojson(indent=2)}}</pre></section>
 <script defer src="/static/settings.js"></script>

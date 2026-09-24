@@ -2,6 +2,6 @@
 {% block title %}Backups{% endblock %}
 {% block content %}
 {% if backups.error %}<section class="card"><strong class="bad">{{ backups.error }}</strong></section>{% endif %}
-<section class="card table">{% for b in backups.records %}<div class="row"><span>{{ b.timestamp }}</span><span>{{ b.operation }}</span><span class="{{ 'ok' if b.result == 'SUCCESS' else 'bad' }}">{{ b.result }}</span>{% if can_restore %}<form method="post" data-blocking-action action="/backups/{{ b.id|urlencode }}/restore?csrf={{ csrf }}"><button>Restore</button></form>{% endif %}</div>{% else %}<p class="muted">No backups yet.</p>{% endfor %}</section>
+<section class="card table">{% for b in backups.records %}<div class="row backup-row"><span>{{ b.timestamp }}</span><span>{{ b.operation }}</span><span class="{{ 'ok' if b.result == 'SUCCESS' else 'bad' }}">{{ b.result }}</span>{% if can_restore %}<form class="backup-restore" method="post" data-blocking-action action="/backups/{{ b.id|urlencode }}/restore?csrf={{ csrf }}"><button>Restore</button></form>{% endif %}</div>{% else %}<p class="muted">No backups yet.</p>{% endfor %}</section>
 <p class="muted">Backups are managed by the host-agent; configuration changes are validated before apply.</p>
 {% endblock %}
