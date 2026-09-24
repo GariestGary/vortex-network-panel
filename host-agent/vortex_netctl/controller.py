@@ -225,6 +225,53 @@ class Controller:
         self.migrate_subscriptions()
         return result
 
+    def _validate_rule_candidate(self, target, candidate_path: Path):
+        config=deepcopy(self._config()); expected=str(self.config.rule_path(target)); replacements=0
+        for entry in config.get("route",{}).get("rule_set",[]):
+            if entry.get("type")=="local" and entry.get("path")==expected: entry["path"]=str(candidate_path); replacements+=1
+        if replacements != 1: return CommandResult(1, stderr="Expected exactly one managed local rule-set reference")
+        fd,temp=tempfile.mkstemp(prefix=".vortex-rule-check-",suffix=".json",dir=self.config.sing_box_config.parent);os.close(fd)
+        try: Path(temp).write_text(json.dumps(config),encoding="utf-8");return self.system.check_config(Path(temp))
+        finally: Path(temp).unlink(missing_ok=True)
+
+    def _atomic_text(self, path: Path, value: str):
+        path.parent.mkdir(parents=True,exist_ok=True);fd,temp=tempfile.mkstemp(prefix=".vortex-state-",dir=path.parent)
+        try:
+            with os.fdopen(fd,"w",encoding="utf-8") as out: out.write(value);out.flush();os.fsync(out.fileno())
+            os.replace(temp,path)
+        finally:
+            if os.path.exists(temp): os.unlink(temp)
+
+    def _hyvpn_state(self):
+        try: profiles=json.loads((self.config.hyvpn_state_dir/"profiles.json").read_text(encoding="utf-8"))
+        except (OSError,ValueError,json.JSONDecodeError): profiles=[]
+        safe=[{key:item.get(key) for key in ("id","remarks","routingMode","serverDescription")} for item in profiles if isinstance(item,dict) and isinstance(item.get("id"),str) and item.get("routingMode")=="full-tunnel"] if isinstance(profiles,list) else []
+        try: selected=(self.config.hyvpn_state_dir/"selected-profile").read_text(encoding="utf-8").strip()
+        except OSError: selected=""
+        try: raw=json.loads((self.config.hyvpn_state_dir/"status.json").read_text(encoding="utf-8"))
+        except (OSError,ValueError,json.JSONDecodeError): raw={"status":"unavailable"}
+        status={key:raw[key] for key in ("status","profileId","remarks","error") if isinstance(raw,dict) and isinstance(raw.get(key),str)}
+        return {"available":bool(safe),"selectedProfile":selected or None,"profiles":safe,"status":status}
+
+    def get_hyvpn(self): return self._hyvpn_state()
+    def _wait_for_hyvpn(self, profile_id):
+        deadline=time.monotonic()+20
+        while time.monotonic()<deadline:
+            state=self._hyvpn_state()
+            if self._provider_running("hyvpn") and state["status"].get("status")=="connected" and state["status"].get("profileId")==profile_id: return True
+            time.sleep(.5)
+        return False
+    def set_hyvpn_profile(self, profile_id):
+        state=self._hyvpn_state()
+        if not any(item["id"]==profile_id for item in state["profiles"]): raise ValueError("Unknown or non-full-tunnel HYVPN profile")
+        previous=state["selectedProfile"]
+        if not previous: raise ValueError("Current HYVPN selection is unavailable")
+        target=self.config.hyvpn_state_dir/"selected-profile"
+        with self.tx._exclusive_lock():
+            self._atomic_text(target,profile_id+"\n")
+            if self.system.restart_hyvpn_gateway().code==0 and self._wait_for_hyvpn(profile_id): return {"result":"SUCCESS","profileId":profile_id}
+            self._atomic_text(target,previous+"\n"); rollback=self.system.restart_hyvpn_gateway().code==0 and self._wait_for_hyvpn(previous)
+            return {"result":"APPLY_FAILED_ROLLED_BACK" if rollback else "APPLY_FAILED_ROLLBACK_FAILED","profileId":previous,"requestedProfileId":profile_id}
     def _provider_endpoint(self, provider):
         if provider == "amnezia": return "127.0.0.1:18890"
         if provider == "hyvpn": return "127.0.0.1:18891"
@@ -245,21 +292,32 @@ class Controller:
         else: raise ValueError("Cannot infer active VPN provider from vpn outbound")
         self._atomic_text(self.config.active_vpn_provider,value+"\n"); return value
 
+    def _container_running(self, name, require_health=False):
+        result=self.system.docker_inspect(name)
+        if result.code != 0: return False
+        parts=result.stdout.strip().split()
+        return bool(parts and parts[0] == "running" and (not require_health or len(parts) < 2 or parts[1] == "healthy"))
+
     def _provider_running(self, provider):
+        if provider not in {"amnezia","hyvpn"}: raise ValueError("Unknown VPN provider")
         names=("amnezia-vpn","amnezia-socks") if provider=="amnezia" else ("hyvpn-gateway",)
-        return all(self.system.docker_inspect(name).code == 0 for name in names)
+        return all(self._container_running(name, provider=="hyvpn") for name in names)
 
     def _provider_ready(self, provider):
-        if not self._provider_running(provider): return False
-        if hasattr(self.system,"provider_socks_healthy"): return self.system.provider_socks_healthy(provider,self.config.ip_endpoint)
-        return True
+        deadline=time.monotonic()+20
+        while time.monotonic()<deadline:
+            if self._provider_running(provider) and (not hasattr(self.system,"provider_socks_healthy") or self.system.provider_socks_healthy(provider,self.config.ip_endpoint)):
+                if provider != "hyvpn" or self._hyvpn_state()["status"].get("status") == "connected": return True
+            time.sleep(.5)
+        return False
 
-    def _start_provider(self, provider): return self.system.start_amnezia() if provider=="amnezia" else self.system.start_hyvpn()
-    def _stop_provider(self, provider): return self.system.stop_amnezia() if provider=="amnezia" else self.system.stop_hyvpn()
+    def _start_provider(self, provider): return CommandResult(0) if self._provider_running(provider) else (self.system.start_amnezia() if provider=="amnezia" else self.system.start_hyvpn())
+    def _stop_provider(self, provider): return CommandResult(0) if not self._provider_running(provider) else (self.system.stop_amnezia() if provider=="amnezia" else self.system.stop_hyvpn())
 
     def _candidate_provider_config(self, provider):
         candidate=deepcopy(self._config()); outbound=self._vpn_outbound(candidate); outbound["server"]="127.0.0.1";outbound["server_port"]=18890 if provider=="amnezia" else 18891
         legacy=str(self.config.force_hyvpn);removed={entry.get("tag") for entry in candidate.get("route",{}).get("rule_set",[]) if entry.get("type")=="local" and entry.get("path")==legacy}
+        candidate["outbounds"]=[outbound for outbound in candidate.get("outbounds",[]) if outbound.get("tag") != "hyvpn"]
         if "route" in candidate:
             candidate["route"]["rule_set"]=[entry for entry in candidate["route"].get("rule_set",[]) if not(entry.get("type")=="local" and entry.get("path")==legacy)]
             candidate["route"]["rules"]=[rule for rule in candidate["route"].get("rules",[]) if not(set(rule.get("rule_set",[]) if isinstance(rule.get("rule_set"),list) else [rule.get("rule_set")]) & removed)]
@@ -327,11 +385,11 @@ class Controller:
         config = self._config()
         ingress = self._ingress(config)
         core = [{"name": "sing-box", "value": "Running" if self.system.service_active("sing-box.service") else "Down"}]
-        dependencies = [{"name": "amnezia-socks listener", "value": "Healthy" if "127.0.0.1:18890" in self.system.listeners().stdout else "Degraded"}, {"name": "amnezia-vpn", "value": "Healthy" if self.system.docker_inspect("amnezia-vpn").code == 0 else "Down"}, {"name": "amnezia-socks", "value": "Healthy" if self.system.docker_inspect("amnezia-socks").code == 0 else "Down"}, {"name": "awg0 (amnezia-vpn)", "value": "Healthy" if self.system.awg().code == 0 else "Down"}, {"name": "Remote relay", "value": "Healthy" if self.system.service_active("tuna-volt.service") else "Down"}]
+        provider=self._read_provider(); dependencies=[{"name":"VPN provider", "value":"Healthy" if self._provider_ready(provider) else "Degraded"}, {"name":"Remote relay", "value":"Healthy" if self.system.service_active("tuna-volt.service") else "Down"}]
         return {"core": core, "dependencies": dependencies, "egress": [{"name": "DIRECT", "ip": self.test_ip(False)}, {"name": "VPN", "ip": self.test_ip(True)}], "ingress": ingress, "settings": {"lan": {"host": self.config.lan_host, "port": self.config.lan_port, "ssid": self.config.resolved_lan_ssids[0], "ssids": list(self.config.resolved_lan_ssids)}, "remote": {"domain": self.config.remote_domain, "port": self.config.remote_port}}}
 
     def test_ip(self, socks: bool):
-        result = self.system.ip_check(socks, self.config.ip_endpoint)
+        result = self.system.provider_ip_check(self._read_provider(), self.config.ip_endpoint) if socks else self.system.ip_check(False, self.config.ip_endpoint)
         value = result.stdout.strip()
         try:
             return str(ipaddress.ip_address(value))

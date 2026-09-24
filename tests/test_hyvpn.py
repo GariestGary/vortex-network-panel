@@ -11,7 +11,7 @@ from app.routing_folders import RoutingFolders
 
 class HyvpnSystem:
     def __init__(self, state, fail=False): self.state, self.fail, self.restarts = state, fail, 0
-    def docker_inspect(self, name): return CommandResult(0)
+    def docker_inspect(self, name): return CommandResult(0, "running healthy")
     def restart_hyvpn_gateway(self):
         self.restarts += 1
         if not self.fail or self.restarts > 1:

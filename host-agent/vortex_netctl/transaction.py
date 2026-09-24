@@ -61,7 +61,7 @@ class TransactionManager:
         finally:
             os.close(fd)
         if source_stat:
-            os.chown(path, source_stat.st_uid, source_stat.st_gid)
+            if hasattr(os, "chown"): os.chown(path, source_stat.st_uid, source_stat.st_gid)
             os.chmod(path, stat.S_IMODE(source_stat.st_mode))
 
     def _atomic(self, path: Path, payload: bytes, source_stat: os.stat_result) -> None:
@@ -70,11 +70,10 @@ class TransactionManager:
         try:
             self._write(Path(temp), payload, source_stat)
             os.replace(temp, path)
-            directory_fd = os.open(path.parent, os.O_DIRECTORY)
-            try:
-                os.fsync(directory_fd)
-            finally:
-                os.close(directory_fd)
+            if hasattr(os, "O_DIRECTORY"):
+                directory_fd = os.open(path.parent, os.O_DIRECTORY)
+                try: os.fsync(directory_fd)
+                finally: os.close(directory_fd)
         finally:
             if os.path.exists(temp):
                 os.unlink(temp)

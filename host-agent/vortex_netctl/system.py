@@ -76,6 +76,10 @@ class System:
             raise ValueError("Unknown fixed unit")
         return self.run(("/usr/bin/journalctl", "-u", unit, "-n", "80", "--no-pager", "-o", "short-iso"), 10)
 
+    def provider_ip_check(self, provider: str, endpoint: str) -> CommandResult:
+        if provider not in {"amnezia", "hyvpn"}: raise ValueError("Unknown VPN provider")
+        port="18890" if provider=="amnezia" else "18891"
+        return self.run(("/usr/bin/curl", "--fail", "--silent", "--show-error", "--max-time", "8", "--socks5-hostname", f"127.0.0.1:{port}", endpoint), 10)
     def ip_check(self, socks: bool, endpoint: str) -> CommandResult:
         argv = ("/usr/bin/curl", "--fail", "--silent", "--show-error", "--max-time", "8", endpoint)
         if socks:
