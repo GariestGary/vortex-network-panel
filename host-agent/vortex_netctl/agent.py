@@ -29,7 +29,9 @@ async def make_handler(controller):
             elif method == "list_client_template_versions": result = controller.list_client_template_versions()
             elif method == "restore_client_template_version": result = controller.restore_client_template_version(params.version_id, params.expected_revision)
             elif method == "get_routing": result = controller.get_routing()
-            elif method in {"add_force_vpn", "remove_force_vpn", "add_force_direct", "remove_force_direct"}: result = controller.mutate_routing("vpn" if method.endswith("vpn") else "direct", params.domain, method.startswith("remove"))
+            elif method in {"add_force_vpn", "remove_force_vpn", "add_force_hyvpn", "remove_force_hyvpn", "add_force_direct", "remove_force_direct"}: result = controller.mutate_routing("hyvpn" if method.endswith("hyvpn") else ("vpn" if method.endswith("vpn") else "direct"), params.domain, method.startswith("remove"))
+            elif method == "get_hyvpn": result = controller.get_hyvpn()
+            elif method == "set_hyvpn_profile": result = controller.set_hyvpn_profile(params.profile_id)
             elif method == "get_ingress": result = controller.get_ingress()
             elif method == "test_direct": result = {"ip": controller.test_ip(False)}
             elif method == "test_vpn": result = {"ip": controller.test_ip(True)}

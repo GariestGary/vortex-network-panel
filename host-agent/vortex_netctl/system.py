@@ -41,9 +41,12 @@ class System:
         return self.service_active("sing-box.service")
 
     def docker_inspect(self, container: str) -> CommandResult:
-        if container not in {"amnezia-vpn", "amnezia-socks"}:
+        if container not in {"amnezia-vpn", "amnezia-socks", "hyvpn-gateway"}:
             raise ValueError("Unknown fixed container")
         return self.run(("/usr/bin/docker", "inspect", "--format", "{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{end}}", container), 10)
+    def restart_hyvpn_gateway(self) -> CommandResult:
+        return self.run(("/usr/bin/docker", "restart", "hyvpn-gateway"), 30)
+
 
     def awg(self) -> CommandResult:
         return self.run(("/usr/bin/docker", "exec", "amnezia-vpn", "ip", "link", "show", "awg0"), 10)

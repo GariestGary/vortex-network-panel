@@ -5,8 +5,9 @@ from pathlib import Path
 FOLDER_COLORS = ('#f4a5b8', '#f5c581', '#e8dd8f', '#a9d9a1', '#8fd8c2', '#91caea', '#b7b7f3', '#d6a8e8')
 
 class RoutingFolders:
+    TARGETS = ("vpn", "hyvpn", "direct")
     def __init__(self, path: Path): self.path = path
-    def _blank(self): return {"version":1,"vpn":{"folders":[],"assignments":{}},"direct":{"folders":[],"assignments":{}}}
+    def _blank(self): return {"version":1, **{target:{"folders":[],"assignments":{}} for target in self.TARGETS}}
     def _folder_color(self, folder):
         color = folder.get("color")
         return color if color in FOLDER_COLORS else FOLDER_COLORS[sum(map(ord, folder.get("id", ""))) % len(FOLDER_COLORS)]
@@ -14,7 +15,9 @@ class RoutingFolders:
         try:
             data=json.loads(self.path.read_text(encoding="utf-8"))
             if data.get("version")!=1: raise ValueError("unsupported version")
-            for target in ("vpn","direct"):
+            # Version 1 remains backward-compatible; HYVPN is added lazily.
+            for target in self.TARGETS:
+                if target not in data: data[target] = {"folders": [], "assignments": {}}
                 if not isinstance(data.get(target),dict) or not isinstance(data[target].get("folders",[]),list) or not isinstance(data[target].get("assignments",{}),dict): raise ValueError("invalid structure")
             return data
         except FileNotFoundError: return self._blank()
@@ -30,7 +33,7 @@ class RoutingFolders:
     def state(self,routes):
         data=self._read()
         result={}
-        for target in ("vpn","direct"):
+        for target in self.TARGETS:
             domains=set(routes.get(target,[])); part=data[target]; ids={f.get("id") for f in part["folders"] if isinstance(f,dict) and isinstance(f.get("id"),str)}
             assignments={d:f for d,f in part["assignments"].items() if d in domains and f in ids}
             folders=[{"id":"common","name":"Common","color":"#8fa1b6"}]+[{"id":f["id"],"name":f.get("name","") ,"color":self._folder_color(f)} for f in part["folders"] if f.get("id") in ids and f.get("name")]

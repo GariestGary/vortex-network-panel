@@ -8,6 +8,7 @@ import socket
 import json
 import os
 import re
+import time
 import tempfile
 
 from .client_template import ClientTemplateError, render_client_template, template_uses_placeholder
@@ -226,8 +227,9 @@ class Controller:
 
     def get_routing(self):
         vpn, vpn_warnings = parse_ruleset(self._rules("vpn"))
+        hyvpn, hyvpn_warnings = parse_ruleset(self._rules("hyvpn"))
         direct, direct_warnings = parse_ruleset(self._rules("direct"))
-        return {"vpn": vpn, "direct": direct, "warnings": {"vpn": vpn_warnings, "direct": direct_warnings}, "priority": "force-direct before force-vpn"}
+        return {"vpn": vpn, "hyvpn": hyvpn, "direct": direct, "warnings": {"vpn": vpn_warnings, "hyvpn": hyvpn_warnings, "direct": direct_warnings}, "priority": "force-direct before force-hyvpn before force-vpn"}
 
     def _validate_rule_candidate(self, target, candidate_path: Path):
         config = deepcopy(self._config())
@@ -247,15 +249,58 @@ class Controller:
         finally:
             Path(temp).unlink(missing_ok=True)
 
+    def _hyvpn_state(self):
+        root = self.config.hyvpn_state_dir
+        try: profiles = json.loads((root / "profiles.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError): profiles = []
+        safe = [{key: item.get(key) for key in ("id", "remarks", "routingMode", "serverDescription")} for item in profiles if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("routingMode") == "full-tunnel"] if isinstance(profiles, list) else []
+        try: selected = (root / "selected-profile").read_text(encoding="utf-8").strip()
+        except OSError: selected = ""
+        try: status = json.loads((root / "status.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError): status = {"status": "unavailable"}
+        status = {key: status[key] for key in ("status", "profileId", "remarks", "error") if isinstance(status, dict) and isinstance(status.get(key), str)}
+        return {"available": bool(safe), "selectedProfile": selected or None, "profiles": safe, "status": status}
+
+    def get_hyvpn(self): return self._hyvpn_state()
+
+    def _atomic_text(self, path: Path, value: str):
+        path.parent.mkdir(parents=True, exist_ok=True); fd, temporary = tempfile.mkstemp(prefix=".hyvpn-selection-", dir=path.parent)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as out: out.write(value); out.flush(); os.fsync(out.fileno())
+            os.replace(temporary, path)
+        finally:
+            if os.path.exists(temporary): os.unlink(temporary)
+
+    def _wait_for_hyvpn(self, profile_id):
+        for _ in range(20):
+            state = self._hyvpn_state()
+            if self.system.docker_inspect("hyvpn-gateway").code == 0 and state["status"].get("status") == "connected" and state["status"].get("profileId") == profile_id: return True
+            time.sleep(1)
+        return False
+
+    def set_hyvpn_profile(self, profile_id):
+        state = self._hyvpn_state()
+        if not any(item["id"] == profile_id for item in state["profiles"]): raise ValueError("Unknown or non-full-tunnel HYVPN profile")
+        previous = state["selectedProfile"]
+        if not previous: raise ValueError("Current HYVPN selection is unavailable; refusing unsafe switch")
+        target = self.config.hyvpn_state_dir / "selected-profile"
+        with self.tx._exclusive_lock():
+            self._atomic_text(target, profile_id + "\n")
+            if self.system.restart_hyvpn_gateway().code == 0 and self._wait_for_hyvpn(profile_id): return {"result": "SUCCESS", "profileId": profile_id}
+            self._atomic_text(target, previous + "\n")
+            rollback = self.system.restart_hyvpn_gateway().code == 0 and self._wait_for_hyvpn(previous)
+            return {"result": "APPLY_FAILED_ROLLED_BACK" if rollback else "APPLY_FAILED_ROLLBACK_FAILED", "profileId": previous, "requestedProfileId": profile_id}
+
     def mutate_routing(self, target, domain, remove):
         domain = normalize_domain(domain)
-        other = "direct" if target == "vpn" else "vpn"
+        others = tuple(candidate for candidate in ("direct", "hyvpn", "vpn") if candidate != target)
         path = self.config.rule_path(target)
 
         def prepare(current):
-            other_domains, _ = parse_ruleset(self._rules(other))
-            if not remove and domain in other_domains:
-                raise ValueError(f"Domain already exists in force-{other}; explicit conflict is not allowed")
+            for other in others:
+                other_domains, _ = parse_ruleset(self._rules(other))
+                if not remove and domain in other_domains:
+                    raise ValueError(f"Domain already exists in force-{other}; explicit conflict is not allowed")
             return mutate_ruleset(current, domain, remove)
 
         return self.tx.apply_mutation(path, f"{'remove' if remove else 'add'}_{target}:{domain}", prepare, lambda candidate_path: self._validate_rule_candidate(target, candidate_path)).__dict__

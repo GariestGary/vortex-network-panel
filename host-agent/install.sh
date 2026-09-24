@@ -71,7 +71,7 @@ command -v python3 >/dev/null || { echo "python3 is required"; exit 1; }
 command -v /usr/bin/sing-box >/dev/null || { echo "/usr/bin/sing-box is required"; exit 1; }
 command -v /usr/bin/docker >/dev/null || { echo "/usr/bin/docker is required"; exit 1; }
 getent group vortex-netctl >/dev/null || groupadd --system vortex-netctl
-install -d -o root -g vortex-netctl -m 0750 /etc/vortex-netctl /var/lib/vortex-netctl /var/lib/vortex-netctl/backups /var/lib/vortex-netctl/client-template-versions /run/vortex-netctl /run/vortex-subscription
+install -d -o root -g vortex-netctl -m 0750 /etc/vortex-netctl /var/lib/vortex-netctl /var/lib/vortex-netctl/backups /var/lib/vortex-netctl/client-template-versions /var/lib/hyvpn-vortex /run/vortex-netctl /run/vortex-subscription
 install_config
 install_template
 install -d -o root -g root -m 0755 /opt/vortex-netctl
