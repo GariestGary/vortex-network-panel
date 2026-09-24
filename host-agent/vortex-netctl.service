@@ -16,6 +16,6 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
-ReadWritePaths=/etc/sing-box /etc/vortex-netctl /var/lib/vortex-netctl /run/vortex-netctl /run/vortex-subscription /run/lock /run/docker.sock
+ReadWritePaths=/etc/sing-box /etc/vortex-netctl /var/lib/vortex-netctl /var/lib/hyvpn-vortex /run/vortex-netctl /run/vortex-subscription /run/lock /run/docker.sock
 [Install]
 WantedBy=multi-user.target

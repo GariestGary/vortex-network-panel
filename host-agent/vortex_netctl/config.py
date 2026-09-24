@@ -14,7 +14,8 @@ class AgentConfig:
     sing_box_config: Path = Path("/etc/sing-box/config.json")
     force_vpn: Path = Path("/etc/sing-box/rules/force-vpn.json")
     force_direct: Path = Path("/etc/sing-box/rules/force-direct.json")
-    force_hyvpn: Path = Path("/etc/sing-box/rules/force-hyvpn.json")
+    force_hyvpn: Path = Path("/etc/sing-box/rules/force-hyvpn.json")  # legacy migration input only
+    active_vpn_provider: Path = Path("/var/lib/vortex-netctl/active-vpn-provider")
     hyvpn_state_dir: Path = Path("/var/lib/hyvpn-vortex")
     backups: Path = Path("/var/lib/vortex-netctl/backups")
     lock_file: Path = Path("/run/lock/vortex-netctl.lock")
@@ -40,8 +41,6 @@ class AgentConfig:
     def rule_path(self, target: str) -> Path:
         if target == "vpn":
             return self.force_vpn
-        if target == "hyvpn":
-            return self.force_hyvpn
         if target == "direct":
             return self.force_direct
         raise ValueError("Unknown routing target")
@@ -106,7 +105,7 @@ def load_config(path: str | None = None) -> AgentConfig:
     known = {key: raw[key] for key in AgentConfig.__dataclass_fields__ if key in raw}
     known["lan_ssids"] = normalized_lan_ssids(raw)
     known.pop("lan_ssid", None)
-    for key in ("sing_box_config", "force_vpn", "force_hyvpn", "force_direct", "hyvpn_state_dir", "backups", "lock_file", "client_template", "client_template_versions", "subscription_store"):
+    for key in ("sing_box_config", "force_vpn", "force_hyvpn", "force_direct", "hyvpn_state_dir", "active_vpn_provider", "backups", "lock_file", "client_template", "client_template_versions", "subscription_store"):
         if key in known:
             known[key] = Path(known[key])
     return AgentConfig(**known)

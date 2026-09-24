@@ -1,1 +1,12 @@
-{% extends 'base.html' %}{% block title %}Settings{% endblock %}{% block content %}<section class="card"><h2>Configured infrastructure</h2><pre>{{status.settings|tojson(indent=2)}}</pre></section><p class="muted">Production configuration lives in the host-agent config file, not spread through application source.</p>{% endblock %}
+{% extends 'base.html' %}
+{% block title %}Settings{% endblock %}
+{% block content %}
+<section id="vpn-settings" class="card" data-csrf="{{csrf}}" data-provider="{{vpn.provider|default('')}}">
+  <h2>VPN Provider</h2>
+  <p id="vpn-provider-status" class="muted">{{vpn.provider|default('Unavailable')|upper}} · {{vpn.status|default('unavailable')}}</p>
+  <div class="actions"><button data-provider="amnezia" {% if vpn.provider == 'amnezia' %}disabled{% endif %}>AMNEZIA</button><button data-provider="hyvpn" {% if vpn.provider == 'hyvpn' %}disabled{% endif %}>HYVPN</button></div>
+  <div id="hyvpn-exit" {% if vpn.provider != 'hyvpn' %}hidden{% endif %}><label>HYVPN exit <select id="hyvpn-profile">{% for profile in hyvpn.profiles|default([]) %}<option value="{{profile.id}}" {% if profile.id == hyvpn.selectedProfile %}selected{% endif %}>{{profile.remarks or profile.serverDescription or profile.id}}</option>{% endfor %}</select></label><button id="apply-hyvpn-profile">Apply exit</button></div>
+</section>
+<section class="card"><h2>Configured infrastructure</h2><pre>{{status.settings|tojson(indent=2)}}</pre></section>
+<script defer src="/static/settings.js"></script>
+{% endblock %}

@@ -3,6 +3,7 @@
   "force_vpn": "/etc/sing-box/rules/force-vpn.json",
   "force_hyvpn": "/etc/sing-box/rules/force-hyvpn.json",
   "hyvpn_state_dir": "/var/lib/hyvpn-vortex",
+  "active_vpn_provider": "/var/lib/vortex-netctl/active-vpn-provider",
   "force_direct": "/etc/sing-box/rules/force-direct.json",
   "backups": "/var/lib/vortex-netctl/backups",
   "lock_file": "/run/lock/vortex-netctl.lock",

@@ -49,10 +49,9 @@ def test_hyvpn_failed_switch_rolls_back(tmp_path, monkeypatch):
     assert ctl.set_hyvpn_profile("fr")["result"] == "APPLY_FAILED_ROLLED_BACK"
     assert state.joinpath("selected-profile").read_text().strip() == "nl"
 
-def test_routing_folder_migrates_and_has_three_targets(tmp_path):
-    path=tmp_path/"folders.json"; path.write_text(json.dumps({"version":1,"vpn":{"folders":[],"assignments":{}},"direct":{"folders":[],"assignments":{}}}))
-    folders=RoutingFolders(path); state=folders.state({"vpn":["a.com"],"hyvpn":["b.com"],"direct":["c.com"]})
-    assert set(state) == {"vpn","hyvpn","direct"}
-    folders.create("hyvpn","Exit"); folder=folders.state({"vpn":[],"hyvpn":["b.com"],"direct":[]})["hyvpn"]["folders"][1]
-    folders.move("hyvpn","b.com",folder["id"])
-    assert folders.state({"vpn":[],"hyvpn":["b.com"],"direct":[]})["hyvpn"]["assignments"]["b.com"] == folder["id"]
+def test_routing_folder_migrates_hyvpn_into_vpn(tmp_path):
+    path=tmp_path/"folders.json"; path.write_text(json.dumps({"version":1,"vpn":{"folders":[{"id":"vpn","name":"Exit"}],"assignments":{}},"hyvpn":{"folders":[{"id":"hy","name":"Exit"}],"assignments":{"b.com":"hy"}},"direct":{"folders":[],"assignments":{}}}))
+    state=RoutingFolders(path).state({"vpn":["a.com","b.com"],"direct":["c.com"]})
+    assert set(state) == {"vpn","direct"}
+    assert state["vpn"]["assignments"]["b.com"] != "vpn"
+    assert any(folder["name"] == "Exit (HYVPN)" for folder in state["vpn"]["folders"])

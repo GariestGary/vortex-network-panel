@@ -58,15 +58,19 @@ class MockAdapter:
             if set(rule)=={"domain"}: values.extend(rule["domain"])
             elif set(rule)=={"domain_suffix"}: values.extend("*."+x.lstrip(".") for x in rule["domain_suffix"])
         return values
-    def routing(self):
-        hyvpn = self.root / "force-hyvpn.json"
-        return {"vpn":self._domains(self._read("force-vpn.json")),"hyvpn":self._domains(json.loads(hyvpn.read_text(encoding="utf-8"))) if hyvpn.exists() else [],"direct":self._domains(self._read("force-direct.json"))}
+    def routing(self): return {"vpn":self._domains(self._read("force-vpn.json")),"direct":self._domains(self._read("force-direct.json"))}
     def route_change(self,target,domain,remove=False):
         domain=RouteEntry(domain=domain).domain; data=self._read(f"force-{target}.json"); values=self._domains(data); other=self.routing()["direct" if target=="vpn" else "vpn"]
         if not remove and domain in other: raise ValueError("Domain conflicts with the other force rule-set")
         if remove: data["rules"]=[r for r in data["rules"] if not ((set(r)=={"domain"} and r["domain"]==[domain]) or (set(r)=={"domain_suffix"} and r["domain_suffix"]==["."+domain[2:]]))]
         elif domain not in values: data["rules"].append({"domain_suffix":["."+domain[2:]]} if domain.startswith("*.") else {"domain":[domain]})
         self._write(f"force-{target}.json",data); self._backup(f"{'Remove' if remove else 'Add'} {target} route {domain}")
+    def vpn_provider(self): return {"provider":getattr(self,"_vpn_provider","amnezia"),"status":"connected","endpoint":"127.0.0.1:18890" if getattr(self,"_vpn_provider","amnezia")=="amnezia" else "127.0.0.1:18891"}
+    def set_vpn_provider(self, provider):
+        if provider not in {"amnezia","hyvpn"}: raise ValueError("Unknown VPN provider")
+        self._vpn_provider=provider; return {"result":"SUCCESS","provider":provider,"endpoint":"127.0.0.1:18890" if provider=="amnezia" else "127.0.0.1:18891"}
+    def hyvpn(self): return {"available":False,"profiles":[],"status":{"status":"unavailable"}}
+    def set_hyvpn_profile(self, profile_id): raise ValueError("HYVPN state is unavailable")
     def backups(self): return [Backup(**x) for x in self._read("backups.json")]
     def backups_view(self): return {"records":self.backups(),"error":None}
     def diagnostics(self): return {"status":self.status(),"logs":self.logs(),"error":None}
@@ -91,7 +95,7 @@ class MockAdapter:
 
 class RpcAdapter:
     MAX_RESPONSE_BYTES = 262144
-    METHODS={"get_status","get_devices","add_device","enable_device","disable_device","delete_device","rotate_device_uuid","get_subscription_token","rotate_subscription_token","revoke_subscription_token","get_client_template","validate_client_template","save_client_template","list_client_template_versions","restore_client_template_version","get_routing","add_force_vpn","remove_force_vpn","add_force_hyvpn","remove_force_hyvpn","add_force_direct","remove_force_direct","get_hyvpn","set_hyvpn_profile","get_ingress","test_direct","test_vpn","test_destination","get_recent_logs","list_backups","restore_backup"}
+    METHODS={"get_status","get_devices","add_device","enable_device","disable_device","delete_device","rotate_device_uuid","get_subscription_token","rotate_subscription_token","revoke_subscription_token","get_client_template","validate_client_template","save_client_template","list_client_template_versions","restore_client_template_version","get_routing","add_force_vpn","remove_force_vpn","add_force_direct","remove_force_direct","get_vpn_provider","set_vpn_provider","get_hyvpn","set_hyvpn_profile","get_ingress","test_direct","test_vpn","test_destination","get_recent_logs","list_backups","restore_backup"}
     def __init__(self,socket_path=None): self.socket_path=socket_path or os.getenv("VORTEX_NETCTL_SOCKET","/run/vortex-netctl/vortex-netctl.sock")
     def call(self,method,params=None):
         if method not in self.METHODS: raise ValueError("Forbidden RPC method")
@@ -142,6 +146,8 @@ class ProductionAdapter:
     def change_device(self,name,action): return self._call({"enable":"enable_device","disable":"disable_device","delete":"delete_device","rotate":"rotate_device_uuid"}[action],{"name":validate_existing_device_name(name)})
     def routing(self): return self._call("get_routing")
     def route_change(self,target,domain,remove=False): return self._call(("remove" if remove else "add")+f"_force_{target}",{"domain":domain})
+    def vpn_provider(self): return self._call("get_vpn_provider")
+    def set_vpn_provider(self, provider): return self._call("set_vpn_provider", {"provider": provider})
     def hyvpn(self): return self._call("get_hyvpn")
     def set_hyvpn_profile(self, profile_id): return self._call("set_hyvpn_profile", {"profile_id": profile_id})
     def backups(self): return self._call("list_backups")

@@ -225,86 +225,101 @@ class Controller:
         self.migrate_subscriptions()
         return result
 
+    def _provider_endpoint(self, provider):
+        if provider == "amnezia": return "127.0.0.1:18890"
+        if provider == "hyvpn": return "127.0.0.1:18891"
+        raise ValueError("Unknown VPN provider")
+
+    def _vpn_outbound(self, config):
+        matches=[outbound for outbound in config.get("outbounds",[]) if outbound.get("tag")=="vpn"]
+        if len(matches)!=1 or matches[0].get("type") not in {"socks", "socks5"}: raise ValueError("Expected exactly one SOCKS vpn outbound")
+        return matches[0]
+
+    def _read_provider(self):
+        try: value=self.config.active_vpn_provider.read_text(encoding="utf-8").strip()
+        except OSError: value=""
+        if value in {"amnezia","hyvpn"}: return value
+        port=self._vpn_outbound(self._config()).get("server_port")
+        if port == 18890: value="amnezia"
+        elif port == 18891: value="hyvpn"
+        else: raise ValueError("Cannot infer active VPN provider from vpn outbound")
+        self._atomic_text(self.config.active_vpn_provider,value+"\n"); return value
+
+    def _provider_running(self, provider):
+        names=("amnezia-vpn","amnezia-socks") if provider=="amnezia" else ("hyvpn-gateway",)
+        return all(self.system.docker_inspect(name).code == 0 for name in names)
+
+    def _provider_ready(self, provider):
+        if not self._provider_running(provider): return False
+        if hasattr(self.system,"provider_socks_healthy"): return self.system.provider_socks_healthy(provider,self.config.ip_endpoint)
+        return True
+
+    def _start_provider(self, provider): return self.system.start_amnezia() if provider=="amnezia" else self.system.start_hyvpn()
+    def _stop_provider(self, provider): return self.system.stop_amnezia() if provider=="amnezia" else self.system.stop_hyvpn()
+
+    def _candidate_provider_config(self, provider):
+        candidate=deepcopy(self._config()); outbound=self._vpn_outbound(candidate); outbound["server"]="127.0.0.1";outbound["server_port"]=18890 if provider=="amnezia" else 18891
+        legacy=str(self.config.force_hyvpn);removed={entry.get("tag") for entry in candidate.get("route",{}).get("rule_set",[]) if entry.get("type")=="local" and entry.get("path")==legacy}
+        if "route" in candidate:
+            candidate["route"]["rule_set"]=[entry for entry in candidate["route"].get("rule_set",[]) if not(entry.get("type")=="local" and entry.get("path")==legacy)]
+            candidate["route"]["rules"]=[rule for rule in candidate["route"].get("rules",[]) if not(set(rule.get("rule_set",[]) if isinstance(rule.get("rule_set"),list) else [rule.get("rule_set")]) & removed)]
+        return candidate
+
+    def migrate_legacy_hyvpn(self):
+        if not self.config.force_hyvpn.exists(): return
+        legacy,_=parse_ruleset(json.loads(self.config.force_hyvpn.read_text(encoding="utf-8")))
+        current,_=parse_ruleset(self._rules("vpn")); candidate=self._rules("vpn")
+        for domain in legacy:
+            if domain not in current: candidate=mutate_ruleset(candidate,domain,False);current.append(domain)
+        if candidate != self._rules("vpn"):
+            result=self.tx.apply_json(self.config.force_vpn,candidate,"migrate_force_hyvpn",lambda path:self._validate_rule_candidate("vpn",path))
+            if result.result != "SUCCESS": raise ValueError("HYVPN routing migration failed")
+        config=self._candidate_provider_config(self._read_provider())
+        if config != self._config():
+            result=self.tx.apply_json(self.config.sing_box_config,config,"remove_force_hyvpn",self.system.check_config)
+            if result.result != "SUCCESS": raise ValueError("HYVPN routing configuration migration failed")
+
     def get_routing(self):
-        vpn, vpn_warnings = parse_ruleset(self._rules("vpn"))
-        hyvpn, hyvpn_warnings = parse_ruleset(self._rules("hyvpn"))
-        direct, direct_warnings = parse_ruleset(self._rules("direct"))
-        return {"vpn": vpn, "hyvpn": hyvpn, "direct": direct, "warnings": {"vpn": vpn_warnings, "hyvpn": hyvpn_warnings, "direct": direct_warnings}, "priority": "force-direct before force-hyvpn before force-vpn"}
+        vpn,vpn_warnings=parse_ruleset(self._rules("vpn"));direct,direct_warnings=parse_ruleset(self._rules("direct"))
+        return {"vpn":vpn,"direct":direct,"warnings":{"vpn":vpn_warnings,"direct":direct_warnings},"priority":"force-direct before force-vpn"}
 
-    def _validate_rule_candidate(self, target, candidate_path: Path):
-        config = deepcopy(self._config())
-        expected = str(self.config.rule_path(target))
-        replacements = 0
-        for entry in config.get("route", {}).get("rule_set", []):
-            if entry.get("type") == "local" and entry.get("path") == expected:
-                entry["path"] = str(candidate_path)
-                replacements += 1
-        if replacements != 1:
-            return CommandResult(1, stderr="Expected exactly one managed local rule-set reference")
-        fd, temp = tempfile.mkstemp(prefix=".vortex-rule-check-", suffix=".json", dir=self.config.sing_box_config.parent)
-        os.close(fd)
-        try:
-            Path(temp).write_text(json.dumps(config), encoding="utf-8")
-            return self.system.check_config(Path(temp))
-        finally:
-            Path(temp).unlink(missing_ok=True)
+    def get_vpn_provider(self):
+        provider=self._read_provider(); status="connected" if self._provider_ready(provider) else "unavailable"; result={"provider":provider,"status":status,"endpoint":self._provider_endpoint(provider)}
+        if provider=="hyvpn": result["hyvpn"]=self._hyvpn_state()
+        return result
 
-    def _hyvpn_state(self):
-        root = self.config.hyvpn_state_dir
-        try: profiles = json.loads((root / "profiles.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError): profiles = []
-        safe = [{key: item.get(key) for key in ("id", "remarks", "routingMode", "serverDescription")} for item in profiles if isinstance(item, dict) and isinstance(item.get("id"), str) and item.get("routingMode") == "full-tunnel"] if isinstance(profiles, list) else []
-        try: selected = (root / "selected-profile").read_text(encoding="utf-8").strip()
-        except OSError: selected = ""
-        try: status = json.loads((root / "status.json").read_text(encoding="utf-8"))
-        except (OSError, ValueError, json.JSONDecodeError): status = {"status": "unavailable"}
-        status = {key: status[key] for key in ("status", "profileId", "remarks", "error") if isinstance(status, dict) and isinstance(status.get(key), str)}
-        return {"available": bool(safe), "selectedProfile": selected or None, "profiles": safe, "status": status}
-
-    def get_hyvpn(self): return self._hyvpn_state()
-
-    def _atomic_text(self, path: Path, value: str):
-        path.parent.mkdir(parents=True, exist_ok=True); fd, temporary = tempfile.mkstemp(prefix=".hyvpn-selection-", dir=path.parent)
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as out: out.write(value); out.flush(); os.fsync(out.fileno())
-            os.replace(temporary, path)
-        finally:
-            if os.path.exists(temporary): os.unlink(temporary)
-
-    def _wait_for_hyvpn(self, profile_id):
-        for _ in range(20):
-            state = self._hyvpn_state()
-            if self.system.docker_inspect("hyvpn-gateway").code == 0 and state["status"].get("status") == "connected" and state["status"].get("profileId") == profile_id: return True
-            time.sleep(1)
-        return False
-
-    def set_hyvpn_profile(self, profile_id):
-        state = self._hyvpn_state()
-        if not any(item["id"] == profile_id for item in state["profiles"]): raise ValueError("Unknown or non-full-tunnel HYVPN profile")
-        previous = state["selectedProfile"]
-        if not previous: raise ValueError("Current HYVPN selection is unavailable; refusing unsafe switch")
-        target = self.config.hyvpn_state_dir / "selected-profile"
+    def set_vpn_provider(self, provider):
+        if provider not in {"amnezia","hyvpn"}: raise ValueError("Unknown VPN provider")
         with self.tx._exclusive_lock():
-            self._atomic_text(target, profile_id + "\n")
-            if self.system.restart_hyvpn_gateway().code == 0 and self._wait_for_hyvpn(profile_id): return {"result": "SUCCESS", "profileId": profile_id}
-            self._atomic_text(target, previous + "\n")
-            rollback = self.system.restart_hyvpn_gateway().code == 0 and self._wait_for_hyvpn(previous)
-            return {"result": "APPLY_FAILED_ROLLED_BACK" if rollback else "APPLY_FAILED_ROLLBACK_FAILED", "profileId": previous, "requestedProfileId": profile_id}
+            previous=self._read_provider()
+            if provider==previous: return {"result":"SUCCESS","provider":provider,"endpoint":self._provider_endpoint(provider)}
+            if self._start_provider(provider).code != 0 or not self._provider_ready(provider):
+                self._start_provider(previous);self._stop_provider(provider);return {"result":"APPLY_FAILED_ROLLED_BACK","provider":previous}
+            current=self.config.sing_box_config.read_bytes();candidate=self._candidate_provider_config(provider);applied=self.tx._apply_locked(self.config.sing_box_config,current,candidate,f"set_vpn_provider:{provider}",self.system.check_config)
+            if applied.result != "SUCCESS": self._start_provider(previous);self._stop_provider(provider);return {"result":applied.result,"provider":previous}
+            self._atomic_text(self.config.active_vpn_provider,provider+"\n")
+            if self._stop_provider(previous).code == 0 and not self._provider_running(previous): return {"result":"SUCCESS","provider":provider,"endpoint":self._provider_endpoint(provider)}
+            rollback=self.tx._apply_locked(self.config.sing_box_config,self.config.sing_box_config.read_bytes(),self._candidate_provider_config(previous),f"rollback_vpn_provider:{previous}",self.system.check_config)
+            self._atomic_text(self.config.active_vpn_provider,previous+"\n");self._start_provider(previous);self._stop_provider(provider)
+            return {"result":"APPLY_FAILED_ROLLED_BACK" if rollback.result=="SUCCESS" and self._provider_ready(previous) else "APPLY_FAILED_ROLLBACK_FAILED","provider":previous}
+
+    def reconcile_vpn_provider(self):
+        provider=self._read_provider(); other="hyvpn" if provider=="amnezia" else "amnezia"
+        if self._start_provider(provider).code != 0 or not self._provider_ready(provider): raise ValueError("Selected VPN provider is unavailable")
+        candidate=self._candidate_provider_config(provider)
+        if candidate != self._config():
+            result=self.tx.apply_json(self.config.sing_box_config,candidate,"reconcile_vpn_provider",self.system.check_config)
+            if result.result != "SUCCESS": raise ValueError("Could not reconcile VPN outbound")
+        if self._stop_provider(other).code != 0: raise ValueError("Could not stop inactive VPN provider")
 
     def mutate_routing(self, target, domain, remove):
-        domain = normalize_domain(domain)
-        others = tuple(candidate for candidate in ("direct", "hyvpn", "vpn") if candidate != target)
-        path = self.config.rule_path(target)
-
+        if target not in {"vpn","direct"}: raise ValueError("Unknown routing target")
+        domain=normalize_domain(domain);other="direct" if target=="vpn" else "vpn";path=self.config.rule_path(target)
         def prepare(current):
-            for other in others:
-                other_domains, _ = parse_ruleset(self._rules(other))
-                if not remove and domain in other_domains:
-                    raise ValueError(f"Domain already exists in force-{other}; explicit conflict is not allowed")
-            return mutate_ruleset(current, domain, remove)
-
-        return self.tx.apply_mutation(path, f"{'remove' if remove else 'add'}_{target}:{domain}", prepare, lambda candidate_path: self._validate_rule_candidate(target, candidate_path)).__dict__
-
+            other_domains,_=parse_ruleset(self._rules(other))
+            if not remove and domain in other_domains: raise ValueError(f"Domain already exists in force-{other}; explicit conflict is not allowed")
+            return mutate_ruleset(current,domain,remove)
+        return self.tx.apply_mutation(path,f"{'remove' if remove else 'add'}_{target}:{domain}",prepare,lambda candidate_path:self._validate_rule_candidate(target,candidate_path)).__dict__
     def get_ingress(self):
         return self._ingress(self._config())
 

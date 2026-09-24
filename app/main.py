@@ -125,9 +125,7 @@ def routing_state(request: Request):
     except OSError as exc:
         logging.getLogger(__name__).exception("Routing folder storage is unavailable")
         raise HTTPException(503, "Routing folder storage is unavailable") from exc
-    try: hyvpn = adapter.hyvpn()
-    except (AttributeError, OSError, ValueError, ConnectionError): hyvpn = {"available": False, "profiles": [], "status": {"status": "unavailable"}}
-    return JSONResponse({"routes": routes, "hyvpn": hyvpn}, headers={"Cache-Control":"no-store"})
+    return JSONResponse({"routes": routes}, headers={"Cache-Control":"no-store"})
 def folder_response(fn):
     try:
         result = fn()
@@ -136,33 +134,23 @@ def folder_response(fn):
 @app.post("/routing/folders/{target}")
 def create_folder(request:Request,target:str,name:str=Form(...)):
     csrf(request)
-    if target not in {"vpn","hyvpn","direct"}: raise HTTPException(404)
+    if target not in {"vpn","direct"}: raise HTTPException(404)
     return folder_response(lambda:routing_folders.create(target,name))
 @app.post("/routing/folders/{target}/{folder_id}/rename")
 def rename_folder(request:Request,target:str,folder_id:str,name:str=Form(...)):
     csrf(request)
-    if target not in {"vpn","hyvpn","direct"}: raise HTTPException(404)
+    if target not in {"vpn","direct"}: raise HTTPException(404)
     return folder_response(lambda:routing_folders.rename(target,folder_id,name))
 @app.post("/routing/folders/{target}/{folder_id}/move")
 def move_folder_domain(request:Request,target:str,folder_id:str,domain:str=Form(...)):
     csrf(request); domain=RouteEntry(domain=domain).domain
-    if target not in {"vpn","hyvpn","direct"}: raise HTTPException(404)
+    if target not in {"vpn","direct"}: raise HTTPException(404)
     if domain not in adapter.routing().get(target,[]): raise HTTPException(404,"Routing domain not found")
     return folder_response(lambda:routing_folders.move(target,domain,folder_id))
-@app.post("/routing/hyvpn/profile")
-def set_hyvpn_profile(request: Request, profile_id: str = Form(...)):
-    csrf(request)
-    try:
-        result = adapter.set_hyvpn_profile(profile_id)
-    except (ValueError, OSError, ConnectionError) as exc:
-        raise HTTPException(409, str(exc)) from None
-    if result.get("result") != "SUCCESS":
-        raise HTTPException(409, "HYVPN switch failed; " + ("previous profile was restored." if result.get("result") == "APPLY_FAILED_ROLLED_BACK" else "rollback also failed."))
-    return JSONResponse(result, headers={"Cache-Control": "no-store"})
 @app.post("/routing/move")
 def move_route_domain(request: Request, source: str = Form(...), target: str = Form(...), folder_id: str = Form("common"), domain: str = Form(...)):
     csrf(request); domain = RouteEntry(domain=domain).domain
-    if source not in {"vpn", "hyvpn", "direct"} or target not in {"vpn", "hyvpn", "direct"}: raise HTTPException(404)
+    if source not in {"vpn", "direct"} or target not in {"vpn", "direct"}: raise HTTPException(404)
     if domain not in adapter.routing().get(source, []): raise HTTPException(404, "Routing domain not found")
     if source == target: return folder_response(lambda: routing_folders.move(target, domain, folder_id))
     adapter.route_change(target, domain, False)
@@ -176,7 +164,7 @@ def move_route_domain(request: Request, source: str = Form(...), target: str = F
 @app.post("/routing/folders/{target}/{folder_id}/delete")
 def delete_folder(request:Request,target:str,folder_id:str,mode:str=Form(...)):
     csrf(request)
-    if target not in {"vpn","hyvpn","direct"}: raise HTTPException(404)
+    if target not in {"vpn","direct"}: raise HTTPException(404)
     routes=routing_folders.state(adapter.routing())[target]; domains=[d for d,f in routes["assignments"].items() if f==folder_id]
     if mode=="common": return folder_response(lambda:routing_folders.delete(target,folder_id))
     if mode!="domains": raise HTTPException(400,"Unknown delete mode")
@@ -191,7 +179,7 @@ def delete_folder(request:Request,target:str,folder_id:str,mode:str=Form(...)):
 @app.post("/routing/mutate/{target}")
 def routing_mutate(request:Request,target:str,domain:str=Form(...),remove:bool=Form(False),folder_id:str=Form("common")):
     csrf(request); domain=RouteEntry(domain=domain).domain
-    if target not in {"vpn","hyvpn","direct"}: raise HTTPException(404)
+    if target not in {"vpn","direct"}: raise HTTPException(404)
     try: result=adapter.route_change(target,domain,remove)
     except ValueError as exc: raise HTTPException(400,str(exc)) from None
     if isinstance(result,dict) and result.get("result") not in {None,"SUCCESS"}: raise HTTPException(409,routing_flash(target,domain,remove,result))
@@ -202,7 +190,7 @@ def routing_mutate(request:Request,target:str,domain:str=Form(...),remove:bool=F
 def routing(request:Request): return templates.TemplateResponse(request,"routing.html",ctx(request,routes=adapter.routing(),csrf=request.session["csrf"]))
 def routing_flash(target, domain, remove, result):
     action = "removed from" if remove else "added to"
-    label = {"direct": "Force Direct", "vpn": "Force Amnezia", "hyvpn": "Force HYVPN"}[target]
+    label = {"direct": "Force Direct", "vpn": "Force VPN"}[target]
     outcome = result.get("result", "SUCCESS") if isinstance(result, dict) else "SUCCESS"
     if outcome == "SUCCESS":
         return f"{domain} {action} {label}"
@@ -216,7 +204,7 @@ def routing_flash(target, domain, remove, result):
 @app.post("/routing/{target}")
 def change_route(request:Request,target:str,domain:str=Form(...),remove:bool=Form(False)):
     csrf(request)
-    if target not in {"vpn","hyvpn","direct"}: raise HTTPException(404)
+    if target not in {"vpn","direct"}: raise HTTPException(404)
     normalized = domain.strip().lower()
     try:
         result = adapter.route_change(target,normalized,remove)
@@ -266,4 +254,21 @@ def restore_client_config(request: Request, version_id: str, expected_revision: 
         raise HTTPException(404, "Client template version not found") from None
     return JSONResponse(result, status_code=200 if result.get("valid") else 422, headers={"Cache-Control": "no-store"})
 @app.get("/settings",response_class=HTMLResponse)
-def settings(request:Request): return templates.TemplateResponse(request,"settings.html",ctx(request,status=adapter.status(),csrf=request.session["csrf"]))
+def settings(request:Request):
+    try: vpn=adapter.vpn_provider(); hyvpn=adapter.hyvpn()
+    except (AttributeError, ConnectionError, ValueError): vpn={"status":"unavailable"};hyvpn={"available":False,"profiles":[],"status":{"status":"unavailable"}}
+    return templates.TemplateResponse(request,"settings.html",ctx(request,status=adapter.status(),vpn=vpn,hyvpn=hyvpn,csrf=request.session["csrf"]))
+@app.post("/settings/vpn-provider")
+def set_vpn_provider(request: Request, provider: str = Form(...)):
+    csrf(request)
+    try: result=adapter.set_vpn_provider(provider)
+    except (ValueError, ConnectionError, OSError) as exc: raise HTTPException(409,str(exc)) from None
+    if result.get("result") != "SUCCESS": raise HTTPException(409, "VPN provider switch failed; "+("previous provider was restored." if result.get("result")=="APPLY_FAILED_ROLLED_BACK" else "rollback also failed."))
+    return JSONResponse(result,headers={"Cache-Control":"no-store"})
+@app.post("/settings/hyvpn-profile")
+def settings_hyvpn_profile(request: Request, profile_id: str = Form(...)):
+    csrf(request)
+    try: result=adapter.set_hyvpn_profile(profile_id)
+    except (ValueError, ConnectionError, OSError) as exc: raise HTTPException(409,str(exc)) from None
+    if result.get("result") != "SUCCESS": raise HTTPException(409,"HYVPN exit switch failed; previous exit was restored.")
+    return JSONResponse(result,headers={"Cache-Control":"no-store"})

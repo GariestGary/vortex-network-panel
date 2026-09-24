@@ -48,6 +48,26 @@ class System:
         return self.run(("/usr/bin/docker", "restart", "hyvpn-gateway"), 30)
 
 
+    def start_amnezia(self) -> CommandResult:
+        first = self.run(("/usr/bin/docker", "start", "amnezia-vpn"), 30)
+        second = self.run(("/usr/bin/docker", "start", "amnezia-socks"), 30)
+        return second if first.code == 0 else first
+
+    def stop_amnezia(self) -> CommandResult:
+        first = self.run(("/usr/bin/docker", "stop", "amnezia-socks"), 30)
+        second = self.run(("/usr/bin/docker", "stop", "amnezia-vpn"), 30)
+        return second if first.code == 0 else first
+
+    def start_hyvpn(self) -> CommandResult:
+        return self.run(("/usr/bin/docker", "start", "hyvpn-gateway"), 45)
+
+    def stop_hyvpn(self) -> CommandResult:
+        return self.run(("/usr/bin/docker", "stop", "hyvpn-gateway"), 45)
+
+    def provider_socks_healthy(self, provider: str, endpoint: str) -> bool:
+        if provider not in {"amnezia", "hyvpn"}: raise ValueError("Unknown VPN provider")
+        port = "18890" if provider == "amnezia" else "18891"
+        return self.run(("/usr/bin/curl", "--fail", "--silent", "--show-error", "--max-time", "8", "--socks5-hostname", f"127.0.0.1:{port}", endpoint), 10).code == 0
     def awg(self) -> CommandResult:
         return self.run(("/usr/bin/docker", "exec", "amnezia-vpn", "ip", "link", "show", "awg0"), 10)
 
